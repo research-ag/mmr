@@ -15,7 +15,7 @@ sha2 = "0.3.3"
 bench-helper = "0.0.4"
 
 [toolchain]
-moc = "2.2.3"
+moc = "2.2.4"
 wasmtime = "50.0.2"
 pocket-ic = "15.0.0"
 wasm-opt = "133"
