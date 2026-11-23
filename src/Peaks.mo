@@ -25,6 +25,7 @@
 ///     binary counter. Adding a leaf is a carry at height 0 (`add`), adding
 ///     two leaves fused straight from their Blobs a carry at height 1
 ///     (`addPair`), adding the root of a subtree a carry at its height.
+///     `addAll` adds a run of leaves, in pairs where it can.
 ///
 ///   - `close` computes a root from the peaks without changing them. It walks
 ///     up from the lowest peak: where the count has a 1-bit it combines with
@@ -188,6 +189,41 @@ module {
     node.combineBlob32(left, right);
     if (self.double) node.hashState(node);
     carryChecked(self, 1);
+  };
+
+  /// Add the leaves `leaves[from]` to `leaves[to - 1]`, in pairs wherever the
+  /// count allows: a first leaf alone if the count is odd, so that the pairs
+  /// are aligned, then pairs, then a last leaf alone if one is left. The
+  /// result is that of adding them one by one, at about two thirds of the
+  /// loading cost.
+  ///
+  /// With `checked`, returns `false` as soon as two equal siblings would be
+  /// combined; the leaves before them stay added. Otherwise `true`.
+  public func addAll(self : Peaks, leaves : [Blob], from : Nat, to : Nat, checked : Bool) : Bool {
+    assert from <= to and to <= leaves.size();
+    var i = from;
+    if (checked) {
+      if (i < to and (self.count & 1) == 1) {
+        if (not addChecked(self, leaves[i])) return false;
+        i += 1;
+      };
+      while (i + 1 < to) {
+        if (not addPairChecked(self, leaves[i], leaves[i + 1])) return false;
+        i += 2;
+      };
+      if (i < to) return addChecked(self, leaves[i]);
+    } else {
+      if (i < to and (self.count & 1) == 1) {
+        add(self, leaves[i]);
+        i += 1;
+      };
+      while (i + 1 < to) {
+        addPair(self, leaves[i], leaves[i + 1]);
+        i += 2;
+      };
+      if (i < to) add(self, leaves[i]);
+    };
+    true;
   };
 
   /// Add a leaf that is held in a `Hasher`. The hasher is only read.

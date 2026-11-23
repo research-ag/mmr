@@ -16,10 +16,25 @@
 ///
 /// Every chunk is checked against the root itself, and the proof is used once
 /// and not stored. An empty proof says that the chunk is the last one.
+/// Verification allocates nothing.
 ///
-/// A chunk's leaves are added before the check can fail, so the peaks are
-/// copied aside first and copied back if the chunk is rejected. Verification
-/// allocates nothing.
+/// === A rejected chunk ===
+///
+/// A chunk's leaves are added before the check can fail. What happens to the
+/// tree then is the caller's choice:
+///
+///   - WITH A BACKUP (`new`, and the presets' `verifier`), the peaks are
+///     copied aside before every chunk and copied back if it is rejected. The
+///     verifier is as it was, and the upload can go on with a correct chunk.
+///
+///   - WITHOUT ONE (`onTree` with `null`), nothing is copied, and a chunk
+///     that fails after its leaves were added leaves the tree half-updated.
+///     The verifier is then BROKEN and accepts nothing more. This suits a
+///     canister that traps on a rejected chunk: the trap rolls the call back,
+///     the tree with it, and a backup would never be read.
+///
+/// `onTree` also lets the caller own the hashers: one tree, allocated once,
+/// can serve one verifier after another.
 ///
 /// === Cost ===
 ///
@@ -46,29 +61,55 @@ module {
     root : Blob;
     /// The tree over the leaves accepted so far; `tree.count` is their number.
     tree : Peaks.Peaks;
-    /// Room to copy the peaks aside while a chunk is being checked.
-    backup : Peaks.Peaks;
+    /// Room to copy the peaks aside while a chunk is being checked, if a
+    /// rejected chunk is to leave the verifier as it was.
+    backup : ?Peaks.Peaks;
     /// The tree's rule for a node without a right sibling.
     fill : Peaks.Fill;
     /// Whether equal siblings are rejected (see `Bitcoin`).
     checked : Bool;
     /// Whether a chunk has been accepted with an empty proof.
     var done : Bool;
+    /// Whether a chunk was rejected with no backup to restore the tree from.
+    var failed : Bool;
   };
 
   /// A verifier for the tree with root `root` (32 bytes) and at most
   /// 2^maxDepth leaves, built with single or double SHA-256 and the given
   /// `fill`. With `checked`, a chunk that would combine two equal siblings is
   /// rejected. The presets have a `verifier` function that fills these in.
+  ///
+  /// The verifier allocates its tree and a backup, so that a rejected chunk
+  /// leaves it unchanged.
   public func new(root : Blob, maxDepth : Nat, double : Bool, fill : Peaks.Fill, checked : Bool) : Verifier {
-    assert root.size() == 32 and maxDepth <= 61;
+    assert maxDepth <= 61;
+    onTree(root, Peaks.withDepth(maxDepth, double), ?Peaks.withDepth(maxDepth, double), fill, checked);
+  };
+
+  /// A verifier on a tree that the caller owns. The tree is emptied (its
+  /// count set to 0; what its hashers hold does not matter), and its
+  /// `double` is the verifier's. A tree made by `Peaks.withDepth(d, ...)`
+  /// verifies up to 2^d leaves. Only one verifier may use a tree at a time,
+  /// and the caller must not touch it meanwhile.
+  ///
+  /// `backup` is a second tree of at least the same size, or `null`. With
+  /// `null`, a chunk that is rejected after its leaves were added breaks the
+  /// verifier: it accepts nothing more, and the caller must trap or drop it.
+  public func onTree(root : Blob, tree : Peaks.Peaks, backup : ?Peaks.Peaks, fill : Peaks.Fill, checked : Bool) : Verifier {
+    assert root.size() == 32;
+    switch backup {
+      case (?b) assert b.hasher.size() >= tree.hasher.size();
+      case null {};
+    };
+    tree.count := 0;
     {
       root;
-      tree = Peaks.withDepth(maxDepth, double);
-      backup = Peaks.withDepth(maxDepth, double);
+      tree;
+      backup;
       fill;
       checked;
       var done = false;
+      var failed = false;
     };
   };
 
@@ -90,42 +131,43 @@ module {
     true;
   };
 
+  /// Whether the verifier is broken: a chunk was rejected and there was no
+  /// backup to restore the tree from (see `onTree`).
+  public func broken(self : Verifier) : Bool = self.failed;
+
   /// Verify the next chunk of leaves (32 bytes each) with the proof `next`
   /// for the leaves after the chunk, and accept it if it checks out: `true`
-  /// and the verifier advances; otherwise `false` and the verifier is
-  /// unchanged. An empty `next` claims that the chunk is the last one.
-  /// Allocation-free.
+  /// and the verifier advances; otherwise `false`. An empty `next` claims
+  /// that the chunk is the last one. Allocation-free.
+  ///
+  /// After `false` a verifier with a backup is unchanged. One without is
+  /// unchanged if the chunk was malformed or too long, and broken otherwise.
   public func verifyChunk(self : Verifier, leaves : [Blob], next : [Blob]) : Bool {
-    if (self.done or leaves.size() == 0 or not wellFormed(leaves) or not wellFormed(next)) return false;
+    if (self.done or self.failed or leaves.size() == 0) return false;
     let tree = self.tree;
-    // A tree of 2^maxDepth leaves is the most there is room for.
+    // A tree of 2^maxDepth leaves is the most there is room for, and its
+    // proofs have at most one peak per level. A longer proof is not walked.
+    let maxDepth = tree.hasher.size() - 2 : Nat;
+    if (next.size() > maxDepth or not wellFormed(leaves) or not wellFormed(next)) return false;
     let maxLeaves = (tree.capacity() + 1) / 2;
     if (leaves.size().toNat64() > maxLeaves - tree.count) return false;
-    Peaks.copy(tree, self.backup);
-    // 1. Add the chunk.
-    var ok = true;
-    var j = 0;
-    if (self.checked) {
-      label adding while (j < leaves.size()) {
-        if (not tree.addChecked(leaves[j])) {
-          ok := false;
-          break adding;
-        };
-        j += 1;
-      };
-    } else {
-      while (j < leaves.size()) {
-        tree.add(leaves[j]);
-        j += 1;
-      };
+    switch (self.backup) {
+      case (?backup) Peaks.copy(tree, backup);
+      case null {};
     };
-    // 2. and 3. Close the tree with the proof and compare with the root.
-    if (ok and tree.close(next, self.fill, self.checked) and tree.spare().equalsBlob32(self.root)) {
+    // 1. Add the chunk, in pairs. 2. and 3. Close the tree with the proof
+    // and compare with the root.
+    if (
+      tree.addAll(leaves, 0, leaves.size(), self.checked) and tree.close(next, self.fill, self.checked) and tree.spare().equalsBlob32(self.root)
+    ) {
       // 4. Keep the grown tree.
       self.done := next.size() == 0;
       return true;
     };
-    Peaks.copy(self.backup, tree);
+    switch (self.backup) {
+      case (?backup) Peaks.copy(backup, tree);
+      case null self.failed := true;
+    };
     false;
   };
 };

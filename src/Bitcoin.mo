@@ -85,14 +85,14 @@ module {
   public func merkleRoot(txids : [Blob]) : Blob {
     let n = txids.size();
     assert n >= 1;
+    if (n == 1) {
+      // A block with only its coinbase: the root is the txid itself.
+      assert txids[0].size() == 32;
+      return txids[0];
+    };
     if (mutated(txids)) Runtime.trap("mmr: mutated transaction list (CVE-2012-2459)");
     let peaks = Peaks.new(n, true);
-    var i = 0;
-    while (i + 1 < n) {
-      peaks.addPair(txids[i], txids[i + 1]);
-      i += 2;
-    };
-    if (i < n) peaks.add(txids[i]);
+    ignore peaks.addAll(txids, 0, n, false);
     peaks.root(#copy);
   };
 

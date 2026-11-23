@@ -54,13 +54,13 @@ module {
   public func merkleRoot(leaves : [Blob]) : Blob {
     let n = leaves.size();
     assert n >= 1;
-    let peaks = Peaks.new(n, false);
-    var i = 0;
-    while (i + 1 < n) {
-      peaks.addPair(leaves[i], leaves[i + 1]);
-      i += 2;
+    if (n == 1) {
+      // The root of a single leaf is the leaf.
+      assert leaves[0].size() == 32;
+      return leaves[0];
     };
-    if (i < n) peaks.add(leaves[i]);
+    let peaks = Peaks.new(n, false);
+    ignore peaks.addAll(leaves, 0, n, false);
     peaks.root(#skip);
   };
 

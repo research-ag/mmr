@@ -96,12 +96,7 @@ module {
     // subtraction) allocates for a large limit.
     let depth = if (places <= 1) 0 else (64 - Nat64.bitcountLeadingZero(places.toNat64() - 1)).toNat();
     let tree = new(depth);
-    var i = 0;
-    while (i + 1 < chunks.size()) {
-      tree.peaks.addPair(chunks[i], chunks[i + 1]);
-      i += 2;
-    };
-    if (i < chunks.size()) tree.peaks.add(chunks[i]);
+    ignore tree.peaks.addAll(chunks, 0, chunks.size(), false);
     root(tree);
   };
 

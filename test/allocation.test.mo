@@ -16,7 +16,6 @@ import Hasher "mo:sha2/Hasher/Sha256";
 import Sha256 "mo:sha2/Sha256";
 import Array "mo:core/Array";
 import Nat "mo:core/Nat";
-import Nat32 "mo:core/Nat32";
 import Nat64 "mo:core/Nat64";
 import Text "mo:core/Text";
 import Prim "mo:prim";
@@ -140,6 +139,48 @@ do {
   };
 };
 
+// --- The verifier itself, and one on a caller's tree without a backup ---
+do {
+  let levels = Bitcoin.levels(ls);
+  let root = Prove.root(levels);
+  let tree = Peaks.withDepth(depth, true);
+  // On a caller's tree a verifier is one small record, whatever the depth.
+  let record = alloc(func() { ignore Chunks.onTree(root, tree, null, #copy, true) });
+  assert record > 0 and record <= 128; // seven fields, two of them mutable
+  let deep = Peaks.withDepth(40, true);
+  check("Chunks.onTree, depth 40", alloc(func() { ignore Chunks.onTree(root, deep, null, #copy, true) }), record);
+  check("Chunks.onTree with a backup", alloc(func() { ignore Chunks.onTree(root, tree, ?deep, #copy, true) }), record);
+  // `new` makes the tree and the backup as well.
+  let pool = alloc(func() { ignore Peaks.withDepth(depth, true) });
+  check("Chunks.new", alloc(func() { ignore Chunks.new(root, depth, true, #copy, true) }), 2 * pool + record);
+  check("Bitcoin.verifier", alloc(func() { ignore Bitcoin.verifier(root, depth) }), 2 * pool + record);
+
+  // Chunks at odd and even offsets, accepted; then a forged one, which
+  // breaks the verifier; then refusals.
+  let v = Chunks.onTree(root, tree, null, #copy, true);
+  var m = 0;
+  for (m2 in ([1, 2, 300, 617] : [Nat]).values()) {
+    let chunk = Array.tabulate<Blob>(m2 - m, func(i) = ls[m + i]);
+    let proof = Prove.rightPeaks(levels, m2);
+    check("no backup: verifyChunk, to " # m2.toText(), alloc(func() { assert v.verifyChunk(chunk, proof) }), 0);
+    m := m2;
+  };
+  let rest = Array.tabulate<Blob>(n - m, func(i) = ls[m + i]);
+  let forged = Array.tabulate<Blob>(n - m, func(i) = if (i == 7) ls[0] else ls[m + i]);
+  let long = Array.tabulate<Blob>(depth + 1, func(i) = ls[i]);
+  check("no backup: too long a proof", alloc(func() { assert not v.verifyChunk(rest, long) }), 0);
+  check("no backup: verifyChunk rejected", alloc(func() { assert not v.verifyChunk(forged, []) }), 0);
+  check("no backup: broken", alloc(func() { assert v.broken() and not v.verifyChunk(rest, []) }), 0);
+
+  // addAll: nothing, from an even and from an odd count, with and without
+  // the check.
+  for (checked in [false, true].values()) {
+    let t = Peaks.new(n, true);
+    check("addAll", alloc(func() { assert t.addAll(ls, 0, 301, checked) and t.addAll(ls, 301, n, checked) }), 0);
+    assert t.count == 1000;
+  };
+};
+
 // --- The presets' own functions, and the small accessors ---
 do {
   let b = Bitcoin.new(n);
@@ -213,8 +254,10 @@ do {
     let part = Array.tabulate<Blob>(k, func(i) = big[i]);
     let suffix = ", " # k.toText() # " leaves";
     let pool = alloc(func() { ignore Peaks.new(k, true) });
-    check("Bitcoin.merkleRoot" # suffix, alloc(func() { ignore Bitcoin.merkleRoot(part) }), pool + readout);
-    check("Bagged.merkleRoot" # suffix, alloc(func() { ignore Bagged.merkleRoot(part) }), pool + readout);
+    // The root of a single leaf is the leaf: nothing is made at all.
+    let oneShot = if (k == 1) 0 else pool + readout;
+    check("Bitcoin.merkleRoot" # suffix, alloc(func() { ignore Bitcoin.merkleRoot(part) }), oneShot);
+    check("Bagged.merkleRoot" # suffix, alloc(func() { ignore Bagged.merkleRoot(part) }), oneShot);
     var d = 0;
     while (2 ** d < k) d += 1;
     let padded = alloc(func() { ignore Ssz.new(d) });
@@ -225,7 +268,7 @@ do {
   // capacity given as a number of leaves costs what the same depth costs.
   for (d in ([0, 1, 10, 32, 40, 60, 61] : [Nat]).values()) {
     let byDepth = alloc(func() { ignore Peaks.withDepth(d, true) });
-    let leaves = Nat.bitshiftLeft(1, Nat32.fromNat(d));
+    let leaves = Nat.bitshiftLeft(1, d.toNat32());
     // 2^61 is itself a big number; reading it costs one 72-byte conversion.
     let reading = if (d <= 60) 0 else 72;
     check("Peaks.new for 2^" # d.toText() # " leaves", alloc(func() { ignore Peaks.new(leaves, true) }), byDepth + reading);

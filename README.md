@@ -94,12 +94,28 @@ A rejected chunk leaves the verifier as it was, and verification allocates nothi
 
 Each chunk costs its leaves plus one hash per level of the tree, so this suits a few large chunks better than many small ones.
 
+To leave a verifier unchanged after a rejected chunk, it keeps a backup of its peaks.
+A canister that traps on a rejected chunk does not need one, because the trap rolls the call back.
+It can also keep a single tree for all its uploads:
+
+```motoko
+import Peaks "mo:mmr/Peaks";
+
+let tree = Peaks.withDepth(14, true); // once: at most 2^14 leaves, double SHA-256
+
+// per upload: a verifier on that tree, with no backup
+let verifier = Chunks.onTree(root, tree, null, #copy, true);
+if (not verifier.verifyChunk(chunk, proof)) { /* trap */ };
+```
+
+Without a backup, a chunk that fails leaves the tree half-updated, and the verifier accepts nothing more (`broken`).
+
 ## The core
 
 The presets are thin. To build another tree format, use `Peaks` directly.
 
 - **The structure.** Slot k of the pool holds the root of the perfect subtree ("peak") of 2^k leaves, exactly when bit k of the leaf count is set. One more hasher is a spare for the node being worked on.
-- **`carry(height)`** inserts the node in the spare as a peak of that height and merges upward while the count has a 1-bit: the increment of a binary counter. `add` is a carry at height 0, `addPair` fuses two leaves straight from their Blobs and carries at height 1, and the root of a whole subtree can be carried at its height.
+- **`carry(height)`** inserts the node in the spare as a peak of that height and merges upward while the count has a 1-bit: the increment of a binary counter. `add` is a carry at height 0, `addPair` fuses two leaves straight from their Blobs and carries at height 1, and the root of a whole subtree can be carried at its height. `addAll` adds a run of leaves in pairs, from any count.
 - **`close(proof, fill, checked)`** computes a root without changing the peaks. Going up from the lowest peak, the node in hand meets a peak of the tree on its left where the count has a 1-bit, else the next entry of `proof` on its right, else what `fill` says: nothing (`#skip`, bagging), itself (`#copy`, Bitcoin), or the all-zero subtree of its height (`#zeros`). With an empty proof that is the root; with the peaks of the rest it verifies a prefix.
 - **`foldBranch`** folds a node up a list of siblings, for inclusion proofs.
 - **`copy`, `toBlobs`, `load`** save, export and restore the peaks.
@@ -117,21 +133,22 @@ These trees have no domain separation. That is how the formats are defined, and 
 
 ## Performance
 
-Measured with moc 2.2.3 and wasm-opt, in instructions, for random 32-byte leaves:
+Measured with moc 2.2.4 and wasm-opt, in instructions, for random 32-byte leaves:
 
 | Operation                                | 1,000 leaves | 8,000 leaves | per leaf |
 | ---------------------------------------- | -----------: | -----------: | -------: |
 | `Bitcoin.merkleRoot`                     |   24,400,000 |  195,000,000 |   24,400 |
 | Bitcoin, `add` leaf by leaf, then `root` |   25,300,000 |  202,100,000 |   25,300 |
-| the same with `addChecked`               |   25,300,000 |  202,200,000 |   25,300 |
+| the same with `addChecked`               |   25,300,000 |  202,500,000 |   25,300 |
 | `Bagged.merkleRoot`                      |   16,100,000 |  128,600,000 |   16,100 |
 | bagged, `add` leaf by leaf, then `root`  |   16,900,000 |  135,700,000 |   17,000 |
 | zero-padded to depth 20, `add`, `root`   |   17,100,000 |  135,800,000 |   17,000 |
-| Bitcoin, verified in 3 chunks            |   26,000,000 |  204,400,000 |   25,600 |
-| bagged, verified in 3 chunks             |   17,400,000 |  137,600,000 |   17,200 |
+| Bitcoin, verified in 3 chunks            |   25,100,000 |  197,200,000 |   24,600 |
+| bagged, verified in 3 chunks             |   16,500,000 |  130,100,000 |   16,300 |
 
 A double-SHA node is three SHA-256 compressions and a single-SHA node two, and a tree has about one node per leaf.
 Adding in pairs saves about 900 instructions per leaf, because the two leaves are read straight from their Blobs.
+The one-shot roots and the chunk verifier add in pairs.
 Nothing allocates per leaf; a root allocates its `Blob`.
 
 Run the benchmark with `mops bench`.
