@@ -50,8 +50,8 @@ import VarArray "mo:core/VarArray";
 module {
   /// The peaks of a tree. Slot k of `hasher` holds the peak of height k
   /// exactly when bit k of `count` is set; the last slot is the spare.
-  /// `double` selects double SHA-256 per node. A static record: it can be
-  /// declared `stable`.
+  /// `double` selects double SHA-256 per node. A static record that can be
+  /// declared `stable`; its shape is part of the package's interface.
   public type Peaks = {
     hasher : [var Hasher.Hasher];
     double : Bool;

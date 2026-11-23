@@ -42,7 +42,8 @@ import Prove "Prove";
 module {
   /// A Bitcoin tree: `Peaks` with double SHA-256. The `kind` field only
   /// keeps the trees of different presets apart for the type checker; the
-  /// core functions are reached through `peaks`.
+  /// core functions are reached through `peaks`. A static record that can be
+  /// declared `stable`; its shape is part of the package's interface.
   public type Tree = { peaks : Peaks.Peaks; kind : { #bitcoin } };
 
   /// An empty tree with room for at least `maxLeaves` txids.
@@ -124,6 +125,17 @@ module {
   /// be minimal, the last chunk is recognised by its empty proof, and mutated
   /// lists are rejected. See `Chunks`.
   public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, true, #copy, true);
+
+  /// The same verifier on a tree that the caller owns, without a backup: the
+  /// tree is emptied, nothing is allocated but the verifier's record, and a
+  /// rejected chunk breaks the verifier (see `Chunks.onTree`). For a canister
+  /// that traps on a rejected chunk and keeps one tree for all its blocks. A
+  /// tree made by `Peaks.withDepth(d, true)` verifies up to 2^d transactions.
+  /// Traps if the tree does not use double SHA-256.
+  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
+    assert tree.double;
+    Chunks.onTree(root, tree, null, #copy, true);
+  };
 
   /// The levels of the tree over `txids`, for `Prove.rightPeaks` (the proofs
   /// of the chunk verifier) and `Prove.branch` (Merkle branches).

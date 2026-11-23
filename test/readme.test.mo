@@ -79,7 +79,7 @@ do {
   let levels = Bitcoin.levels(txids);
   let tree = Peaks.withDepth(14, true);
   for (upload in Nat.range(0, 2)) {
-    let verifier = Chunks.onTree(root, tree, null, #copy, true);
+    let verifier = Bitcoin.verifierOn(root, tree);
     for ((from, to) in ([(0, 3), (3, 11)] : [(Nat, Nat)]).values()) {
       let chunk = Array.tabulate<Blob>(to - from, func(i) = txids[from + i]);
       let proof = Prove.rightPeaks(levels, to);

@@ -492,6 +492,35 @@ do {
     assert not v.verifyChunk(ls, [leaf(999)]) and not v.broken() and v.count() == 0;
     assert v.verifyChunk(ls, []) and v.complete();
   };
+  // The presets' own form: their rules on the caller's tree, which serves
+  // one verifier after another.
+  let zTree = Ssz.new(depth);
+  for (n in ([1, 2, 7, 23, 100] : [Nat]).values()) {
+    let ls = leaves(n);
+    let cut = (n + 1) / 2;
+    let runs : [(Chunks.Verifier, [[Blob]])] = [
+      (Bitcoin.verifierOn(refBitcoin(ls), trees[0]), Bitcoin.levels(ls)),
+      (Bagged.verifierOn(refBagged(ls), trees[1]), Bagged.levels(ls)),
+      (Ssz.verifierOn(refPadded(ls, depth), zTree), Ssz.levels(ls, depth)),
+    ];
+    for ((v, levels) in runs.values()) {
+      assert v.count() == 0 and not v.complete();
+      assert v.verifyChunk(slice(ls, 0, cut), Prove.rightPeaks(levels, cut));
+      if (cut < n) assert v.verifyChunk(slice(ls, cut, n), []);
+      assert v.count() == n.toNat64() and not v.broken();
+    };
+    assert runs[0].0.complete() and runs[1].0.complete();
+    // as the verifiers with a backup, these check for equal siblings in Bitcoin only
+    if (n >= 2) {
+      let twice = Array.tabulate<Blob>(n, func(i) = if (i == 1) ls[0] else ls[i]);
+      assert not Bitcoin.verifierOn(refBitcoin(twice), trees[0]).verifyChunk(twice, []);
+      assert Bagged.verifierOn(refBagged(twice), trees[1]).verifyChunk(twice, []);
+      assert Ssz.verifierOn(refPadded(twice, depth), zTree).verifyChunk(twice, []);
+    };
+    // the tree of a zero-padded verifier is still the caller's tree
+    assert zTree.count() == n.toNat64();
+  };
+
   // A proof may have one peak per level and no more: 8 leaves, the first one
   // sent alone, in a verifier of depth 3.
   let eight = leaves(8);

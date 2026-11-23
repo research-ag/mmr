@@ -150,6 +150,13 @@ do {
   let deep = Peaks.withDepth(40, true);
   check("Chunks.onTree, depth 40", alloc(func() { ignore Chunks.onTree(root, deep, null, #copy, true) }), record);
   check("Chunks.onTree with a backup", alloc(func() { ignore Chunks.onTree(root, tree, ?deep, #copy, true) }), record);
+  // The presets' form is the same record; the zero-padded one reuses the
+  // table of its tree.
+  check("Bitcoin.verifierOn", alloc(func() { ignore Bitcoin.verifierOn(root, tree) }), record);
+  let single = Peaks.withDepth(depth, false);
+  check("Bagged.verifierOn", alloc(func() { ignore Bagged.verifierOn(root, single) }), record);
+  let padded = Ssz.new(depth);
+  check("Ssz.verifierOn", alloc(func() { ignore Ssz.verifierOn(root, padded) }), record);
   // `new` makes the tree and the backup as well.
   let pool = alloc(func() { ignore Peaks.withDepth(depth, true) });
   check("Chunks.new", alloc(func() { ignore Chunks.new(root, depth, true, #copy, true) }), 2 * pool + record);

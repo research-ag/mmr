@@ -34,7 +34,8 @@
 ///     the tree with it, and a backup would never be read.
 ///
 /// `onTree` also lets the caller own the hashers: one tree, allocated once,
-/// can serve one verifier after another.
+/// can serve one verifier after another. The presets have a `verifierOn`
+/// function that fills in their rules.
 ///
 /// === Cost ===
 ///
@@ -55,7 +56,8 @@ import Nat "mo:core/Nat";
 import Peaks "Peaks";
 
 module {
-  /// The verifier's state. A static record; it can be declared `stable`.
+  /// The verifier's state. A static record that can be declared `stable`;
+  /// its shape is part of the package's interface.
   public type Verifier = {
     /// The root the leaves must hash to.
     root : Blob;

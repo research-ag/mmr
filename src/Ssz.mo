@@ -29,7 +29,8 @@ import Prove "Prove";
 module {
   /// A tree with room for 2^depth chunks: the peaks, and the rule for
   /// padding, which holds the table of all-zero subtree roots for heights 0
-  /// to depth.
+  /// to depth. A static record that can be declared `stable`; its shape is
+  /// part of the package's interface.
   public type Tree = {
     peaks : Peaks.Peaks;
     fill : Peaks.Fill;
@@ -126,6 +127,12 @@ module {
   /// only that every further chunk is zero; the number of chunks must be
   /// known from elsewhere.
   public func verifier(root : Blob, depth : Nat) : Chunks.Verifier = Chunks.new(root, depth, false, fillOf(depth), false);
+
+  /// The same verifier on a tree that the caller owns (from `new`), without
+  /// a backup: the tree is emptied, nothing is allocated but the verifier's
+  /// record, and a rejected chunk breaks the verifier (see `Chunks.onTree`).
+  /// The depth and the table of zero subtrees are the tree's own.
+  public func verifierOn(root : Blob, tree : Tree) : Chunks.Verifier = Chunks.onTree(root, tree.peaks, null, tree.fill, false);
 
   /// The levels of the tree of 2^depth places over `chunks` (at least one),
   /// for `Prove.rightPeaks` (the proofs of the chunk verifier) and

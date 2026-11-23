@@ -104,11 +104,12 @@ import Peaks "mo:mmr/Peaks";
 let tree = Peaks.withDepth(14, true); // once: at most 2^14 leaves, double SHA-256
 
 // per upload: a verifier on that tree, with no backup
-let verifier = Chunks.onTree(root, tree, null, #copy, true);
+let verifier = Bitcoin.verifierOn(root, tree);
 if (not verifier.verifyChunk(chunk, proof)) { /* trap */ };
 ```
 
 Without a backup, a chunk that fails leaves the tree half-updated, and the verifier accepts nothing more (`broken`).
+`Bagged` and `Ssz` have a `verifierOn` as well; `Chunks.onTree` is the general form, with the rules of the tree and an optional backup as arguments.
 
 ## The core
 
@@ -130,6 +131,15 @@ These trees have no domain separation. That is how the formats are defined, and 
 - **Bitcoin's duplication (CVE-2012-2459).** A list that writes out a duplicated tail has the same root as the shorter one: `[1,2,3]` and `[1,2,3,3]`. `Bitcoin.merkleRoot` traps on such a list, and the checked functions and the chunk verifier reject equal siblings. The plain `add` and `root` hash what they are given.
 - **Bagged roots do not commit to the leaf count.** `Bagged.verifyInclusion` takes the tree size as a parameter for that reason, and the caller has to know it.
 - **Zero padding hides trailing zeros.** A last leaf of 32 zero bytes cannot be told from padding. Where the length varies, mix it in (`Ssz.rootWithLength`).
+
+## Stored state
+
+`Peaks.Peaks`, `Chunks.Verifier` and the presets' `Tree` types are plain records without functions, so a canister can keep them in stable variables across upgrades.
+Their shapes are therefore part of the package's interface:
+
+- A change to a field of one of these types is a breaking change. The CHANGELOG marks it as such, and it comes with a new minor version while the package is at 0.x.
+- A canister that stores such a record then needs a migration when it upgrades to the new version. With enhanced orthogonal persistence, Motoko refuses an upgrade to incompatible stable types, so a missing migration shows as a failed upgrade and not as lost state.
+- The records contain the `Hasher` of `sha2`, a `[var Nat16]` of 16 half-words. A `sha2` release that changed that representation would change these types too.
 
 ## Performance
 
