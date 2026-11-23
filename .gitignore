@@ -1,0 +1,12 @@
+.dfx
+.mops
+.tmp
+.vscode/
+.idea/
+.DS_Store
+*.wasm
+node_modules/
+.agents/
+.claude/
+package.json
+package-lock.json
