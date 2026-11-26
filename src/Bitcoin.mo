@@ -100,8 +100,10 @@ module {
   /// Verify a MERKLE BRANCH: that `txid` is the transaction at position
   /// `index` of a block with Merkle root `root`. `branch` holds one sibling
   /// hash per level, lowest first, with the duplicate written out where
-  /// Bitcoin pairs a node with itself (`Prove.branch` with `#copy`, and what
-  /// `gettxoutproof` and Stratum provide). A malformed branch gives `false`.
+  /// Bitcoin pairs a node with itself. That is what `Prove.branch` gives
+  /// with `#copy`, and what Stratum sends for the coinbase (index 0). It is
+  /// not the `merkleblock` of `gettxoutproof`, a partial tree with flag bits
+  /// that has to be decoded first. A malformed branch gives `false`.
   /// See the note on leaves and inner nodes above.
   public func verifyBranch(txid : Blob, index : Nat, branch : [Blob], root : Blob) : Bool {
     if (txid.size() != 32 or branch.size() > 62) return false;
