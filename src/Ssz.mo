@@ -38,7 +38,10 @@ module {
   };
 
   /// The `Fill` of a tree of 2^depth places.
-  public func fillOf(depth : Nat) : Peaks.Fill = #zeros({ table = Peaks.zeros(depth, false); depth = ?depth });
+  public func fillOf(depth : Nat) : Peaks.Fill = #zeros({
+    table = Peaks.zeros(depth, false);
+    depth = ?depth;
+  });
 
   /// An empty tree with 2^depth leaf places (depth at most 61). The deposit
   /// contract uses depth 32.

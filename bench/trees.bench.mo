@@ -44,7 +44,11 @@ module {
     let leaves = counts.map<Nat, [Blob]>(func(n) = Array.tabulate<Blob>(n, func(_) = leaf()));
 
     // The chunks and their proofs, for the two verifier rows.
-    type Plan = { chunks : [[Blob]]; proofs : [[Blob]]; verifier : Chunks.Verifier };
+    type Plan = {
+      chunks : [[Blob]];
+      proofs : [[Blob]];
+      verifier : Chunks.Verifier;
+    };
     func plan(ls : [Blob], levels : [[Blob]], verifier : Chunks.Verifier) : Plan {
       let n = ls.size();
       let bounds : [Nat] = [0, n / 3, 2 * n / 3, n];
@@ -109,12 +113,18 @@ module {
           case 6 {
             let p = bitcoinPlans[ci];
             var c = 0;
-            while (c < 3) { assert p.verifier.verifyChunk(p.chunks[c], p.proofs[c]); c += 1 };
+            while (c < 3) {
+              assert p.verifier.verifyChunk(p.chunks[c], p.proofs[c]);
+              c += 1;
+            };
           };
           case _ {
             let p = baggedPlans[ci];
             var c = 0;
-            while (c < 3) { assert p.verifier.verifyChunk(p.chunks[c], p.proofs[c]); c += 1 };
+            while (c < 3) {
+              assert p.verifier.verifyChunk(p.chunks[c], p.proofs[c]);
+              c += 1;
+            };
           };
         };
       },
