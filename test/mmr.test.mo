@@ -375,8 +375,7 @@ for (n in sizes.values()) {
 // --- The chunk verifier, for all three kinds of tree ---
 // Random-looking chunk sequences are accepted chunk by chunk; a forged leaf,
 // a dropped or wrong peak, a peak too many, a wrong root and a chunk after
-// completion are rejected; and a rejected chunk leaves the verifier as it was
-// (these verifiers have a backup).
+// completion are rejected; and a rejected chunk fails the verifier for good.
 func battery(ls : [Blob], levels : [[Blob]], root : Blob, make : Blob -> Chunks.Verifier, minimal : Bool) {
   let n = ls.size();
   for (step in ([1, 2, 3, 5, 8, 1000] : [Nat]).values()) {
@@ -388,13 +387,22 @@ func battery(ls : [Blob], levels : [[Blob]], root : Blob, make : Blob -> Chunks.
       s := 1 + (s * 7 + m) % (2 * step); // vary the chunk length
       let chunk = slice(ls, m, m2);
       let p = Prove.rightPeaks(levels, m2);
-      assert not v.verifyChunk(chunk, p.concat([leaf(999)]));
-      if (p.size() > 0) {
-        assert not v.verifyChunk(chunk, slice(p, 1, p.size()));
-        assert not v.verifyChunk(chunk, Array.tabulate<Blob>(p.size(), func(i) = if (i == 0) flip(p[0]) else p[i]));
+      // each rejection on a verifier at the same point; it is failed after
+      func rejected(c : [Blob], proof : [Blob]) {
+        let w = make(root);
+        if (m > 0) assert w.verifyChunk(slice(ls, 0, m), Prove.rightPeaks(levels, m));
+        assert not w.verifyChunk(c, proof);
+        assert w.broken() and not w.complete();
+        assert not w.verifyChunk(chunk, p);
       };
-      assert not v.verifyChunk(Array.tabulate<Blob>(chunk.size(), func(i) = if (i == 0) flip(chunk[0]) else chunk[i]), p);
-      assert not v.verifyChunk([], p);
+      rejected(chunk, p.concat([leaf(999)]));
+      if (p.size() > 0) {
+        rejected(chunk, slice(p, 1, p.size()));
+        rejected(chunk, Array.tabulate<Blob>(p.size(), func(i) = if (i == 0) flip(p[0]) else p[i]));
+      };
+      rejected(Array.tabulate<Blob>(chunk.size(), func(i) = if (i == 0) flip(chunk[0]) else chunk[i]), p);
+      rejected([], p);
+      assert not v.broken();
       assert v.count() == m.toNat64();
       assert v.verifyChunk(chunk, p);
       assert v.count() == m2.toNat64();
@@ -405,11 +413,12 @@ func battery(ls : [Blob], levels : [[Blob]], root : Blob, make : Blob -> Chunks.
     assert not v.verifyChunk([ls[0]], []);
   };
   assert not make(flip(root)).verifyChunk(ls, []);
-  // malformed input is rejected, not trapped on
-  let w = make(root);
-  assert not w.verifyChunk(Array.tabulate<Blob>(n, func(i) = if (i == 0) ("short" : Blob) else ls[i]), []);
-  assert not w.verifyChunk(ls, [("short" : Blob)]);
-  assert w.verifyChunk(ls, []) and w.complete();
+  // malformed input is rejected, not trapped on, and fails the verifier
+  for (bad in [(Array.tabulate<Blob>(n, func(i) = if (i == 0) ("short" : Blob) else ls[i]), [] : [Blob]), (ls, [("short" : Blob)])].values()) {
+    let w = make(root);
+    assert not w.verifyChunk(bad.0, bad.1) and w.broken();
+  };
+  assert make(root).verifyChunk(ls, []);
 };
 for (n in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 257] : [Nat]).values()) {
   let ls = leaves(n);
@@ -424,16 +433,15 @@ for (n in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 
   if (d > 0) assert not Bitcoin.verifier(refBitcoin(ls), d - 1 : Nat).verifyChunk(ls, []);
 };
 
-// --- The chunk verifier on a caller's tree, without a backup ---
+// --- The chunk verifier on a caller's tree ---
 // One tree per kind serves every verifier below, one after another, whatever
-// the one before left in it. Honest chunks are accepted as with a backup. A
+// the one before left in it. Honest chunks are accepted. A
 // chunk that is refused before anything is added (empty, malformed, too long
 // a proof, too many leaves) leaves the verifier usable; one that fails after
-// adding breaks it for good.
+// adding fails it for good.
 do {
   let d = 9;
   let trees = [Peaks.withDepth(d, true), Peaks.withDepth(d, false), Peaks.withDepth(d, false)];
-  let spareTree = Peaks.withDepth(d, true);
   for (n in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 257] : [Nat]).values()) {
     let ls = leaves(n);
     let kinds : [(Peaks.Peaks, Peaks.Fill, Bool, [[Blob]], Blob)] = [
@@ -442,8 +450,23 @@ do {
       (trees[2], padFill, false, Ssz.levels(ls, depth), refPadded(ls, depth)),
     ];
     for ((tree, fill, checked, levels, root) in kinds.values()) {
+      // refused up front: nothing is added, but the verifier fails
+      do {
+        let p = Prove.rightPeaks(levels, n);
+        let bads : [([Blob], [Blob])] = [
+          ([], p),
+          (ls, [("short" : Blob)]),
+          ([("short" : Blob)], p),
+          (ls, Array.tabulate<Blob>(d + 1, func(i) = leaf(900 + i))),
+          (Array.tabulate<Blob>(2 ** d + 1, func(i) = leaf(i)), []),
+        ];
+        for ((c, pr) in bads.values()) {
+          let w = Chunks.onTree(root, tree, fill, checked);
+          assert not w.verifyChunk(c, pr) and w.broken() and w.count() == 0;
+        };
+      };
       for (step in ([1, 2, 3, 5, 8, 1000] : [Nat]).values()) {
-        let v = Chunks.onTree(root, tree, null, fill, checked);
+        let v = Chunks.onTree(root, tree, fill, checked);
         assert v.count() == 0 and not v.broken();
         var m = 0;
         var s = step;
@@ -452,13 +475,6 @@ do {
           s := 1 + (s * 7 + m) % (2 * step);
           let chunk = slice(ls, m, m2);
           let p = Prove.rightPeaks(levels, m2);
-          // refused up front: the verifier goes on
-          assert not v.verifyChunk([], p);
-          assert not v.verifyChunk(chunk, [("short" : Blob)]);
-          assert not v.verifyChunk([("short" : Blob)], p);
-          assert not v.verifyChunk(chunk, Array.tabulate<Blob>(d + 1, func(i) = leaf(900 + i)));
-          assert not v.verifyChunk(Array.tabulate<Blob>(2 ** d + 1, func(i) = leaf(i)), []);
-          assert not v.broken() and v.count() == m.toNat64();
           assert v.verifyChunk(chunk, p) and v.count() == m2.toNat64();
           m := m2;
         };
@@ -470,7 +486,7 @@ do {
       var cut = 0;
       while (cut < n) {
         let cut2 = if (cut + 5 >= n) n else cut + 5;
-        let v = Chunks.onTree(root, tree, null, fill, checked);
+        let v = Chunks.onTree(root, tree, fill, checked);
         if (cut > 0) assert v.verifyChunk(slice(ls, 0, cut), Prove.rightPeaks(levels, cut));
         let chunk = slice(ls, cut, cut2);
         let p = Prove.rightPeaks(levels, cut2);
@@ -479,18 +495,14 @@ do {
         assert not v.verifyChunk(chunk, p);
         cut := cut2;
       };
-      // a wrong peak breaks it too
+      // a wrong peak fails it too
       if (n > 1) {
-        let v = Chunks.onTree(root, tree, null, fill, checked);
+        let v = Chunks.onTree(root, tree, fill, checked);
         let p = Prove.rightPeaks(levels, 1);
         assert not v.verifyChunk([ls[0]], Array.tabulate<Blob>(p.size(), func(i) = if (i == 0) flip(p[0]) else p[i]));
         assert v.broken();
       };
     };
-    // with a backup on the caller's trees: as `new`
-    let v = Chunks.onTree(refBitcoin(ls), trees[0], ?spareTree, #copy, true);
-    assert not v.verifyChunk(ls, [leaf(999)]) and not v.broken() and v.count() == 0;
-    assert v.verifyChunk(ls, []) and v.complete();
   };
   // The presets' own form: their rules on the caller's tree, which serves
   // one verifier after another.
@@ -510,7 +522,7 @@ do {
       assert v.count() == n.toNat64() and not v.broken();
     };
     assert runs[0].0.complete() and runs[1].0.complete();
-    // as the verifiers with a backup, these check for equal siblings in Bitcoin only
+    // as `new` does, these check for equal siblings in Bitcoin only
     if (n >= 2) {
       let twice = Array.tabulate<Blob>(n, func(i) = if (i == 1) ls[0] else ls[i]);
       assert not Bitcoin.verifierOn(refBitcoin(twice), trees[0]).verifyChunk(twice, []);
@@ -528,13 +540,13 @@ do {
   let p = Prove.rightPeaks(levels, 1);
   assert p.size() == 3;
   let v = Bitcoin.verifier(refBitcoin(eight), 3);
-  assert not v.verifyChunk([eight[0]], p.concat([leaf(999)]));
+  assert not Bitcoin.verifier(refBitcoin(eight), 3).verifyChunk([eight[0]], p.concat([leaf(999)]));
   assert v.verifyChunk([eight[0]], p);
   assert v.verifyChunk(slice(eight, 1, 8), []) and v.complete();
 };
 
 // --- Bitcoin: mutated lists and equal siblings ---
-let bare = Peaks.withDepth(10, true); // a caller's tree for verifiers without a backup
+let bare = Peaks.withDepth(10, true); // a caller's tree
 for (n in ([2, 3, 5, 6, 7, 11, 12, 13, 16, 100] : [Nat]).values()) {
   let ls = leaves(n);
   let root = refBitcoin(ls);
@@ -556,10 +568,10 @@ for (n in ([2, 3, 5, 6, 7, 11, 12, 13, 16, 100] : [Nat]).values()) {
       assert Bitcoin.root(plain) == root and not ok;
       // the chunk verifier rejects it, in one chunk and split anywhere
       let levels = Bitcoin.levels(mutated);
-      // (an odd cut makes the second chunk start with a single leaf), with
-      // and without a backup
+      // (an odd cut makes the second chunk start with a single leaf), on its
+      // own tree and on the caller's
       for (cut in Nat.range(1, mutated.size() + 1)) {
-        for (v in [Bitcoin.verifier(root, 10), Chunks.onTree(root, bare, null, #copy, true)].values()) {
+        for (v in [Bitcoin.verifier(root, 10), Chunks.onTree(root, bare, #copy, true)].values()) {
           if (cut == mutated.size()) {
             assert not v.verifyChunk(mutated, []);
           } else {
@@ -577,8 +589,8 @@ do {
   func h(x : Blob, y : Blob) : Blob = dsha(x, y);
   func rejects(list : [Blob], chunk : [Blob], proof : [Blob]) : Bool {
     let v = Bitcoin.verifier(refBitcoin(list), 10);
-    let w = Chunks.onTree(refBitcoin(list), bare, null, #copy, true);
-    not v.verifyChunk(chunk, proof) and v.count() == 0 and not w.verifyChunk(chunk, proof) and w.broken();
+    let w = Chunks.onTree(refBitcoin(list), bare, #copy, true);
+    not v.verifyChunk(chunk, proof) and v.broken() and not w.verifyChunk(chunk, proof) and w.broken();
   };
   // equal siblings in adding: two leaves, and two nodes one level up
   assert rejects([a, a, b, c], [a, a, b, c], []);
@@ -592,10 +604,10 @@ do {
   // an honest block: the proof may not name what Bitcoin would duplicate
   let five = slice(t, 0, 5);
   let v5 = Bitcoin.verifier(refBitcoin(five), 10);
-  assert not v5.verifyChunk(five, [t[4]]);
+  assert not Bitcoin.verifier(refBitcoin(five), 10).verifyChunk(five, [t[4]]);
   assert v5.verifyChunk(five, []) and v5.complete();
   let v6 = Bitcoin.verifier(refBitcoin(t), 10);
-  assert not v6.verifyChunk(t, [h(t[4], t[5])]);
+  assert not Bitcoin.verifier(refBitcoin(t), 10).verifyChunk(t, [h(t[4], t[5])]);
   assert v6.verifyChunk(t, []) and v6.complete();
   // pairs: the checked form refuses two equal leaves, and the same pair
   // twice, which would be two equal nodes one level up

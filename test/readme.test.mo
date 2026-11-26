@@ -73,7 +73,7 @@ do {
   };
 };
 
-// On one tree for all uploads, with no backup
+// On one tree for all uploads
 do {
   let root = Bitcoin.merkleRoot(txids);
   let levels = Bitcoin.levels(txids);

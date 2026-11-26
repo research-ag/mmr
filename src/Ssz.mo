@@ -128,11 +128,11 @@ module {
   /// known from elsewhere.
   public func verifier(root : Blob, depth : Nat) : Chunks.Verifier = Chunks.new(root, depth, false, fillOf(depth), false);
 
-  /// The same verifier on a tree that the caller owns (from `new`), without
-  /// a backup: the tree is emptied, nothing is allocated but the verifier's
-  /// record, and a rejected chunk breaks the verifier (see `Chunks.onTree`).
+  /// The same verifier on a tree that the caller owns (from `new`): the
+  /// tree is emptied, nothing is allocated but the verifier's
+  /// record, and a rejected chunk fails the verifier (see `Chunks.onTree`).
   /// The depth and the table of zero subtrees are the tree's own.
-  public func verifierOn(root : Blob, tree : Tree) : Chunks.Verifier = Chunks.onTree(root, tree.peaks, null, tree.fill, false);
+  public func verifierOn(root : Blob, tree : Tree) : Chunks.Verifier = Chunks.onTree(root, tree.peaks, tree.fill, false);
 
   /// The levels of the tree of 2^depth places over `chunks` (at least one),
   /// for `Prove.rightPeaks` (the proofs of the chunk verifier) and

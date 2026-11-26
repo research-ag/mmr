@@ -7,5 +7,5 @@ The shapes of the record types that a canister can store (`Peaks.Peaks`, `Chunks
 - First version.
   - `Peaks`: the core. Peaks with a counter; `carry`, `close`, `foldBranch`; adding leaves from Blobs, pairs of Blobs, runs of Blobs, hashers and messages; saving, exporting and restoring the peaks; the table of zero-subtree roots.
   - Presets `Bitcoin`, `Bagged` and `Ssz`, each with roots, inclusion-proof verification and a chunk verifier (`verifier`, and `verifierOn` for a tree of the caller's).
-  - `Chunks`: verification of a list against a known root, chunk by chunk, with its own tree and a backup or on a tree of the caller's without one.
+  - `Chunks`: verification of a list against a known root, chunk by chunk, with its own tree or on a tree of the caller's. A rejected chunk makes the verifier fail.
   - `Prove`: proofs from all the leaves.

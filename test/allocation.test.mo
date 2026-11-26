@@ -131,7 +131,9 @@ do {
       let chunk = Array.tabulate<Blob>(m2 - m, func(i) = ls[m + i]);
       let forged = Array.tabulate<Blob>(m2 - m, func(i) = if (i == 0) ls[(m + 500) % n] else ls[m + i]);
       let proof = Prove.rightPeaks(levels, m2);
-      check(name # ": verifyChunk rejected, to " # m2.toText(), alloc(func() { assert not v.verifyChunk(forged, proof) }), 0);
+      // a rejection fails a verifier, so a spare one takes it
+      let spare = make(Prove.root(levels));
+      check(name # ": verifyChunk rejected, to " # m2.toText(), alloc(func() { assert not spare.verifyChunk(forged, proof) }), 0);
       check(name # ": verifyChunk, to " # m2.toText(), alloc(func() { assert v.verifyChunk(chunk, proof) }), 0);
       m := m2;
     };
@@ -139,17 +141,16 @@ do {
   };
 };
 
-// --- The verifier itself, and one on a caller's tree without a backup ---
+// --- The verifier itself, and one on a caller's tree ---
 do {
   let levels = Bitcoin.levels(ls);
   let root = Prove.root(levels);
   let tree = Peaks.withDepth(depth, true);
   // On a caller's tree a verifier is one small record, whatever the depth.
-  let record = alloc(func() { ignore Chunks.onTree(root, tree, null, #copy, true) });
-  assert record > 0 and record <= 128; // seven fields, two of them mutable
+  let record = alloc(func() { ignore Chunks.onTree(root, tree, #copy, true) });
+  assert record > 0 and record <= 128; // six fields, two of them mutable
   let deep = Peaks.withDepth(40, true);
-  check("Chunks.onTree, depth 40", alloc(func() { ignore Chunks.onTree(root, deep, null, #copy, true) }), record);
-  check("Chunks.onTree with a backup", alloc(func() { ignore Chunks.onTree(root, tree, ?deep, #copy, true) }), record);
+  check("Chunks.onTree, depth 40", alloc(func() { ignore Chunks.onTree(root, deep, #copy, true) }), record);
   // The presets' form is the same record; the zero-padded one reuses the
   // table of its tree.
   check("Bitcoin.verifierOn", alloc(func() { ignore Bitcoin.verifierOn(root, tree) }), record);
@@ -157,27 +158,27 @@ do {
   check("Bagged.verifierOn", alloc(func() { ignore Bagged.verifierOn(root, single) }), record);
   let padded = Ssz.new(depth);
   check("Ssz.verifierOn", alloc(func() { ignore Ssz.verifierOn(root, padded) }), record);
-  // `new` makes the tree and the backup as well.
+  // `new` makes the tree as well.
   let pool = alloc(func() { ignore Peaks.withDepth(depth, true) });
-  check("Chunks.new", alloc(func() { ignore Chunks.new(root, depth, true, #copy, true) }), 2 * pool + record);
-  check("Bitcoin.verifier", alloc(func() { ignore Bitcoin.verifier(root, depth) }), 2 * pool + record);
+  check("Chunks.new", alloc(func() { ignore Chunks.new(root, depth, true, #copy, true) }), pool + record);
+  check("Bitcoin.verifier", alloc(func() { ignore Bitcoin.verifier(root, depth) }), pool + record);
 
   // Chunks at odd and even offsets, accepted; then a forged one, which
   // breaks the verifier; then refusals.
-  let v = Chunks.onTree(root, tree, null, #copy, true);
+  let v = Chunks.onTree(root, tree, #copy, true);
   var m = 0;
   for (m2 in ([1, 2, 300, 617] : [Nat]).values()) {
     let chunk = Array.tabulate<Blob>(m2 - m, func(i) = ls[m + i]);
     let proof = Prove.rightPeaks(levels, m2);
-    check("no backup: verifyChunk, to " # m2.toText(), alloc(func() { assert v.verifyChunk(chunk, proof) }), 0);
+    check("verifyChunk, to " # m2.toText(), alloc(func() { assert v.verifyChunk(chunk, proof) }), 0);
     m := m2;
   };
   let rest = Array.tabulate<Blob>(n - m, func(i) = ls[m + i]);
   let forged = Array.tabulate<Blob>(n - m, func(i) = if (i == 7) ls[0] else ls[m + i]);
   let long = Array.tabulate<Blob>(depth + 1, func(i) = ls[i]);
-  check("no backup: too long a proof", alloc(func() { assert not v.verifyChunk(rest, long) }), 0);
-  check("no backup: verifyChunk rejected", alloc(func() { assert not v.verifyChunk(forged, []) }), 0);
-  check("no backup: broken", alloc(func() { assert v.broken() and not v.verifyChunk(rest, []) }), 0);
+  check("too long a proof", alloc(func() { assert not v.verifyChunk(rest, long) }), 0);
+  check("verifyChunk rejected", alloc(func() { assert not v.verifyChunk(forged, []) }), 0);
+  check("broken", alloc(func() { assert v.broken() and not v.verifyChunk(rest, []) }), 0);
 
   // addAll: nothing, from an even and from an odd count, with and without
   // the check.
