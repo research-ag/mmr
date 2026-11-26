@@ -45,8 +45,8 @@ do {
     assert Ssz.merkleize(ls, ?128) == hex(padded);
     // the same roots from a tree that is filled leaf by leaf
     let t = Ssz.new(7);
-    for (l in ls.values()) Ssz.add(t, l);
-    assert Ssz.root(t) == hex(padded) and Ssz.rootWithLength(t) == hex(withLength);
+    for (l in ls.values()) t.add(l);
+    assert t.root() == hex(padded) and t.rootWithLength() == hex(withLength);
     assert Ssz.mixInLength(hex(padded), n) == hex(withLength);
   };
 };
@@ -61,8 +61,8 @@ do {
   assert z[1] == hex("f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b");
   assert z[2] == hex("db56114e00fdd4c1f85c892bf35ac9a89289aaecb1ebd0a96cde606a748b5d71");
   let deposits = Ssz.new(32);
-  assert Ssz.root(deposits) == z[32];
-  assert Ssz.rootWithLength(deposits) == hex("d70a234731285c6804c2a4f56711ddb8c82c99740f207854891028af34e27e5e");
+  assert deposits.root() == z[32];
+  assert deposits.rootWithLength() == hex("d70a234731285c6804c2a4f56711ddb8c82c99740f207854891028af34e27e5e");
   assert Ssz.merkleize([], null) == z[0];
 };
 

@@ -38,10 +38,10 @@ for (n in ([2, 3, 5, 6, 7, 11, 12, 13, 16, 100] : [Nat]).values()) {
       let checked = Bitcoin.new(2 * n);
       var ok = true;
       for (l in mutated.values()) {
-        Bitcoin.add(plain, l);
-        if (ok and not Bitcoin.addChecked(checked, l)) ok := false;
+        plain.add(l);
+        if (ok and not checked.addChecked(l)) ok := false;
       };
-      assert Bitcoin.root(plain) == root and not ok;
+      assert plain.root() == root and not ok;
 
       // The chunk verifier rejects it, in one chunk and split anywhere. An
       // odd cut makes the second chunk start with a single leaf. Both on

@@ -13,7 +13,6 @@ import Chunks "../../src/Chunks";
 import Prove "../../src/Prove";
 import Array "mo:core/Array";
 import Nat "mo:core/Nat";
-import Text "mo:core/Text";
 import Allocation "../support/Allocation";
 import Fixtures "../support/Fixtures";
 

@@ -36,17 +36,17 @@ for (n in sizes.values()) {
       assert Prove.rightPeaks(levels, 0) == [root] and Prove.rightPeaks(levels, n) == [];
       let t = Peaks.new(2 ** depth, double);
       for (m in Nat.range(1, n + 1)) {
-        Peaks.add(t, ls[m - 1]);
+        t.add(ls[m - 1]);
         let proof = Prove.rightPeaks(levels, m);
-        assert Peaks.close(t, proof, fill, false) and Peaks.spare(t).readSum() == root;
+        assert t.close(proof, fill, false) and t.spare().readSum() == root;
         if (proof.size() > 0) {
-          ignore Peaks.close(t, slice(proof, 1, proof.size()), fill, false);
-          assert Peaks.spare(t).readSum() != root;
-          ignore Peaks.close(t, Fixtures.flipFirst(proof), fill, false);
-          assert Peaks.spare(t).readSum() != root;
+          ignore t.close(slice(proof, 1, proof.size()), fill, false);
+          assert t.spare().readSum() != root;
+          ignore t.close(Fixtures.flipFirst(proof), fill, false);
+          assert t.spare().readSum() != root;
         };
-        ignore Peaks.close(t, proof.concat([leaf(999)]), fill, false);
-        assert Peaks.spare(t).readSum() != root;
+        ignore t.close(proof.concat([leaf(999)]), fill, false);
+        assert t.spare().readSum() != root;
       };
     };
   };

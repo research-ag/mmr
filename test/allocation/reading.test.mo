@@ -54,10 +54,10 @@ do {
   let b = Bitcoin.new(n);
   let g = Bagged.new(n);
   let z = Ssz.new(depth);
-  for (l in ls.values()) { Bitcoin.add(b, l); Bagged.add(g, l); Ssz.add(z, l) };
-  check("Bitcoin.root", alloc(func() { ignore Bitcoin.root(b) }), readout);
-  check("Bagged.root", alloc(func() { ignore Bagged.root(g) }), readout);
-  check("Ssz.root", alloc(func() { ignore Ssz.root(z) }), readout);
+  for (l in ls.values()) { b.add(l); g.add(l); z.add(l) };
+  check("Bitcoin.root", alloc(func() { ignore b.root() }), readout);
+  check("Bagged.root", alloc(func() { ignore g.root() }), readout);
+  check("Ssz.root", alloc(func() { ignore z.root() }), readout);
 };
 
 // Mixing in the length.

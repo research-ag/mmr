@@ -40,20 +40,20 @@ for (n in sizes.values()) {
   let g = Bagged.new(n);
   let z = Ssz.new(depth);
   for (i in Nat.range(0, n)) {
-    Bitcoin.add(b, ls[i]);
-    Bagged.add(g, ls[i]);
-    Ssz.add(z, ls[i]);
+    b.add(ls[i]);
+    g.add(ls[i]);
+    z.add(ls[i]);
     if (n <= 40) {
       let prefix = slice(ls, 0, i + 1);
-      assert Bitcoin.root(b) == Reference.bitcoin(prefix);
-      assert Bagged.root(g) == Reference.bagged(prefix);
-      assert Ssz.root(z) == Reference.padded(prefix, depth);
+      assert b.root() == Reference.bitcoin(prefix);
+      assert g.root() == Reference.bagged(prefix);
+      assert z.root() == Reference.padded(prefix, depth);
     };
   };
-  assert Bitcoin.root(b) == bitcoin and Bagged.root(g) == bagged and Ssz.root(z) == padded;
+  assert b.root() == bitcoin and g.root() == bagged and z.root() == padded;
   // taking a root changes nothing
-  assert Bitcoin.root(b) == bitcoin;
-  assert Bitcoin.count(b) == n.toNat64() and Bagged.count(g) == n.toNat64() and Ssz.count(z) == n.toNat64();
+  assert b.root() == bitcoin;
+  assert b.count() == n.toNat64() and g.count() == n.toNat64() and z.count() == n.toNat64();
 
   // One shot, adding in pairs.
   assert Bitcoin.merkleRoot(ls) == bitcoin;
@@ -63,7 +63,7 @@ for (n in sizes.values()) {
   // The smallest depth: padded to the next power of two.
   let small = depthFor(n);
   assert Ssz.merkleize(ls, null) == Reference.padded(ls, small);
-  assert Peaks.root(g.peaks, #zeros({ table = Peaks.zeros(small, false); depth = null })) == Reference.padded(ls, small);
+  assert g.peaks.root(#zeros({ table = Peaks.zeros(small, false); depth = null })) == Reference.padded(ls, small);
 
   // The prover's levels have the same roots.
   assert Prove.root(Bitcoin.levels(ls)) == bitcoin;
@@ -73,8 +73,8 @@ for (n in sizes.values()) {
   // Leaves from hashers.
   let s = Peaks.new(n, true);
   let h = Hasher.new();
-  for (l in ls.values()) { h.loadBlob32(l); Peaks.addState(s, h) };
-  assert Peaks.root(s, #copy) == bitcoin;
+  for (l in ls.values()) { h.loadBlob32(l); s.addState(h) };
+  assert s.root(#copy) == bitcoin;
 
   // Leaves from messages, hashed through a digest. A double tree's leaf is
   // the hash of the message once more, so its reference is the Bitcoin root
@@ -84,11 +84,11 @@ for (n in sizes.values()) {
   let double = Peaks.new(n, true);
   for (i in Nat.range(0, n)) {
     let message = ("leaf" # i.toText()).encodeUtf8();
-    Peaks.addMessage(single, d, message);
-    Peaks.addMessage(double, d, message);
+    single.addMessage(d, message);
+    double.addMessage(d, message);
   };
-  assert Peaks.root(single, #skip) == bagged;
-  assert Peaks.root(double, #copy) == Reference.bitcoin(Array.tabulate<Blob>(n, func(i) = Sha256.fromBlob(ls[i])));
+  assert single.root(#skip) == bagged;
+  assert double.root(#copy) == Reference.bitcoin(Array.tabulate<Blob>(n, func(i) = Sha256.fromBlob(ls[i])));
 };
 
 // `addAll` from any count.
@@ -160,13 +160,13 @@ for (n in ([8, 12, 16, 20, 100] : [Nat]).values()) {
     if (n % width == 0) {
       let t = Peaks.new(n, true);
       for (j in Nat.range(0, n / width)) {
-        Peaks.spare(t).loadBlob32(Reference.bitcoin(slice(ls, j * width, (j + 1) * width)));
-        Peaks.carry(t, k.toNat64());
+        t.spare().loadBlob32(Reference.bitcoin(slice(ls, j * width, (j + 1) * width)));
+        t.carry(k.toNat64());
       };
-      assert t.count == n.toNat64() and Peaks.root(t, #copy) == Reference.bitcoin(ls);
+      assert t.count == n.toNat64() and t.root(#copy) == Reference.bitcoin(ls);
       let u = Bitcoin.new(n);
-      for (l in ls.values()) Bitcoin.add(u, l);
-      assert Peaks.toBlobs(t) == Peaks.toBlobs(u.peaks);
+      for (l in ls.values()) u.add(l);
+      assert t.toBlobs() == u.peaks.toBlobs();
     };
   };
 };
