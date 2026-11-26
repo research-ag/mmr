@@ -1,0 +1,4 @@
+# Formatter settings for `mops format` (mo-fmt): two spaces, and trailing
+# commas in lists that span several lines.
+indent-width = 2
+trailing-commas = "multiline"
