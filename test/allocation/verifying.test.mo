@@ -115,10 +115,10 @@ do {
   let padded = ZeroPadded.new(depth);
   check("ZeroPadded.verifierOn", alloc(func() { ignore ZeroPadded.verifierOn(root, padded) }), record);
 
-  // `new` makes the tree as well
+  // `verifier` makes the tree as well
   let pool = alloc(func() { ignore Peaks.withDepth(depth, true, #copy) });
-  check("Chunks.new", alloc(func() { ignore Chunks.new(root, depth, true, #copy, true) }), pool + record);
   check("Bitcoin.verifier", alloc(func() { ignore Bitcoin.verifier(root, depth) }), pool + record);
+  check("Bagged.verifier", alloc(func() { ignore Bagged.verifier(root, depth) }), pool + record);
 
   // Chunks at odd and even offsets are accepted with nothing allocated.
   let v = Chunks.onTree(root, tree, true);

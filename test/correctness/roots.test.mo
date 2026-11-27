@@ -63,9 +63,6 @@ for (n in sizes.values()) {
   // The smallest depth: padded to the next power of two.
   let small = depthFor(n);
   assert ZeroPadded.merkleize(ls, null) == Reference.padded(ls, small);
-  let unfixed = Peaks.new(n, false, #zeros({ table = Peaks.zeros(small, false); depth = null }));
-  ignore unfixed.addAll(ls, 0, n, false);
-  assert unfixed.root() == Reference.padded(ls, small);
 
   // The prover's full trees have the same roots.
   assert Bitcoin.merkleTree(ls).root() == bitcoin;
@@ -181,8 +178,9 @@ for (n in ([1, 2, 3, 7, 8, 21, 100] : [Nat]).values()) {
   let peaks = t.toBlobs();
   assert peaks.size() == Nat64.bitcountNonZero(n.toNat64()).toNat();
 
-  // copy aside, grow, copy back
+  // copy aside, grow, copy back (onto a tree with the same rules)
   let aside = Peaks.new(200, true, #copy);
+  assert Peaks.sameRules(t, aside);
   Peaks.copy(t, aside);
   t.add(leaf(1000));
   assert t.root() != aside.root();

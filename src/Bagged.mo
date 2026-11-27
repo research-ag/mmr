@@ -87,7 +87,7 @@ module {
   /// A chunk verifier for the tree with root `root` and at most 2^maxDepth
   /// leaves. The last chunk is recognised by its empty proof. See `Chunks`,
   /// and the note above: the root does not say how many leaves there are.
-  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, false, #skip, false);
+  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.onTree(root, withDepth(maxDepth), false);
 
   /// The same verifier on a tree that the caller owns: the
   /// tree is emptied, nothing is allocated but the verifier's record, and a

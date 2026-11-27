@@ -42,9 +42,9 @@ module {
       h.readSum();
     };
     let fixedDepth = switch fill {
-      case (#zeros({ depth = ?d })) {
-        if (leaves.size() > 2 ** d) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
-        d;
+      case (#zeros({ depth })) {
+        if (leaves.size() > 2 ** depth) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        depth;
       };
       case _ 0;
     };

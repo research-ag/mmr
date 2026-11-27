@@ -32,7 +32,6 @@
 /// means: for example by taking the first transaction, the coinbase, in full
 /// and checking that it is not 64 bytes long.
 
-import Hasher "mo:sha2/Hasher/Sha256";
 import Nat "mo:core/Nat";
 import Runtime "mo:core/Runtime";
 import Chunks "Chunks";
@@ -90,28 +89,14 @@ module {
   /// not the `merkleblock` of `gettxoutproof`, a partial tree with flag bits
   /// that has to be decoded first. A malformed branch gives `false`.
   /// See the note on leaves and inner nodes above.
-  public func verifyBranch(txid : Blob, index : Nat, branch : [Blob], root : Blob) : Bool {
-    if (txid.size() != 32 or branch.size() > 62) return false;
-    var j = 0;
-    while (j < branch.size()) {
-      if (branch[j].size() != 32) return false;
-      j += 1;
-    };
-    // The index must lie within a tree of that depth.
-    if (index > 2305843009213693951) return false; // 2^61 - 1: the largest bound that compares without allocating
-    let position = index.toNat64();
-    if ((position >> branch.size().toNat64()) != 0) return false;
-    let node = Hasher.new();
-    node.loadBlob32(txid);
-    Peaks.foldBranch(node, position, branch, true);
-    node.equalsBlob32(root);
-  };
+  public func verifyBranch(txid : Blob, index : Nat, branch : [Blob], root : Blob) : Bool =
+    Peaks.verifyBranch(txid, index, branch, root, true);
 
   /// A chunk verifier for the block with Merkle root `root` and at most
   /// 2^maxDepth transactions, with the check for equal siblings: proofs must
   /// be minimal, the last chunk is recognised by its empty proof, and mutated
   /// lists are rejected. See `Chunks`.
-  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, true, #copy, true);
+  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.onTree(root, withDepth(maxDepth), true);
 
   /// The same verifier on a tree that the caller owns: the
   /// tree is emptied, nothing is allocated but the verifier's record, and a

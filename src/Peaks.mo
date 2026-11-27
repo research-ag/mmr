@@ -36,10 +36,11 @@
 ///     of peaks for the right-hand side, the same walk verifies a prefix of a
 ///     tree against its root.
 ///
-///   - `foldBranch` folds one node up a list of siblings: the verification of
-///     an inclusion proof.
+///   - `foldBranch` folds one node up a list of siblings, and `verifyBranch`
+///     checks an inclusion proof with it.
 ///
-///   - `copy`, `toBlobs` and `load` save, export and restore the peaks.
+///   - `copy`, `toBlobs` and `load` save, export and restore the peaks,
+///     between trees of the same rules (`sameRules`).
 
 import Hasher "mo:sha2/Hasher/Sha256";
 import Sha256 "mo:sha2/Sha256";
@@ -72,14 +73,13 @@ module {
   ///     OpenTimestamps.
   ///   - `#copy`: the node itself. Bitcoin's rule for an odd last node.
   ///   - `#zeros`: the root of an all-zero subtree of the same height, taken
-  ///     from `table` (see `zeros`). With `depth = ?d` the tree is padded to
-  ///     exactly 2^d leaves, and `table` needs d + 1 entries; with `null` to
-  ///     the smallest power of two that holds the leaves. SSZ and BitTorrent
-  ///     v2 work this way.
+  ///     from `table` (see `zeros`). The tree is padded to exactly 2^depth
+  ///     leaves, and `table` needs depth + 1 entries. SSZ and BitTorrent v2
+  ///     work this way.
   public type Fill = {
     #skip;
     #copy;
-    #zeros : { table : [Blob]; depth : ?Nat };
+    #zeros : { table : [Blob]; depth : Nat };
   };
 
   /// An empty tree with room for at least `maxLeaves` leaves. Allocates
@@ -104,9 +104,21 @@ module {
     };
   };
 
-  /// The largest number of leaves the tree can hold: one less than a power of
-  /// two, since every slot can be occupied at once.
-  public func capacity(self : Peaks) : Nat64 = (1 << (self.hasher.size() - 1 : Nat).toNat64()) - 1;
+  /// The largest number of leaves the tree can hold and still have a root.
+  /// The slots hold one less than a power of two, since every slot can be
+  /// occupied at once. A tree padded to depth d has a root for at most 2^d
+  /// leaves, so its capacity is the smaller of the two.
+  public func capacity(self : Peaks) : Nat64 {
+    let slots : Nat64 = (1 << (self.hasher.size() - 1 : Nat).toNat64()) - 1;
+    switch (self.fill) {
+      case (#zeros({ depth })) {
+        if (depth >= 62) return slots; // more places than slots can ever hold
+        let places : Nat64 = 1 << depth.toNat64();
+        if (places < slots) places else slots;
+      };
+      case _ slots;
+    };
+  };
 
   /// The spare hasher. The adapters below put a node here before `carry`, and
   /// `close` leaves its result here.
@@ -118,8 +130,9 @@ module {
 
   /// Insert the node in the spare as a peak of height `height`, merging upward
   /// while the count has a 1-bit: `count` grows by 2^height. The low `height`
-  /// bits of the count must be zero, so that the node is aligned. Traps if the
-  /// capacity is exceeded.
+  /// bits of the count must be zero, so that the node is aligned. Traps if
+  /// the slots are full. (A zero-padded tree is not stopped at its places
+  /// here; `close` traps on it.)
   public func carry(self : Peaks, height : Nat64) {
     let hasher = self.hasher;
     let top = hasher.size() - 1 : Nat;
@@ -283,18 +296,18 @@ module {
     let count = self.count;
     let double = self.double;
     let fixedDepth : Nat64 = switch fill {
-      case (#zeros({ depth = ?d })) {
-        let depth = d.toNat64();
-        if (count > (1 << depth)) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
-        depth;
+      case (#zeros({ depth })) {
+        let d = depth.toNat64();
+        if (count > (1 << d)) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        d;
       };
       case _ 0;
     };
     if (count == 0) {
-      // Only a tree padded to a fixed depth has a root without leaves.
+      // Only a zero-padded tree has a root without leaves.
       switch fill {
-        case (#zeros({ table; depth = ?d })) {
-          acc.loadBlob32(table[d]);
+        case (#zeros({ table; depth })) {
+          acc.loadBlob32(table[depth]);
           return proof.size() == 0;
         };
         case _ Runtime.trap("mmr: an empty tree has no root");
@@ -368,14 +381,49 @@ module {
     };
   };
 
+  /// Verify a branch with one sibling per level, lowest first: that `leaf`
+  /// is at position `index` of a tree of depth `branch.size()` with root
+  /// `root`, built with single or double SHA-256. This is the check of
+  /// `Bitcoin.verifyBranch` and `ZeroPadded.verifyBranch`. The index must lie
+  /// within that depth. A malformed branch gives `false`. Allocates one
+  /// hasher.
+  public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob, double : Bool) : Bool {
+    if (leaf.size() != 32 or branch.size() > 62) return false;
+    var j = 0;
+    while (j < branch.size()) {
+      if (branch[j].size() != 32) return false;
+      j += 1;
+    };
+    if (index > 2305843009213693951) return false; // 2^61 - 1: the largest bound that compares without allocating
+    let position = index.toNat64();
+    if ((position >> branch.size().toNat64()) != 0) return false;
+    let node = Hasher.new();
+    node.loadBlob32(leaf);
+    foldBranch(node, position, branch, double);
+    node.equalsBlob32(root);
+  };
+
   // ---------------------------------------------------------------------------
   // Saving and restoring
   // ---------------------------------------------------------------------------
 
-  /// Copy the count and the peaks of `from` into `to`, which must have at
-  /// least as many slots. Used to undo: copy aside, try, copy back.
+  /// Whether two trees have the same rules: the same hashing and the same
+  /// fill (for zero padding, the same depth).
+  public func sameRules(a : Peaks, b : Peaks) : Bool {
+    if (a.double != b.double) return false;
+    switch (a.fill, b.fill) {
+      case (#skip, #skip) true;
+      case (#copy, #copy) true;
+      case (#zeros(x), #zeros(y)) x.depth == y.depth;
+      case _ false;
+    };
+  };
+
+  /// Copy the count and the peaks of `from` into `to`: a snapshot, to go
+  /// back to later. Traps unless `to` has the same rules (`sameRules`) and
+  /// at least as many slots.
   public func copy(from : Peaks, to : Peaks) {
-    assert to.hasher.size() >= from.hasher.size();
+    assert sameRules(from, to) and to.hasher.size() >= from.hasher.size();
     var bits = from.count;
     while (bits != 0) {
       let k = Nat64.bitcountTrailingZero(bits).toNat();

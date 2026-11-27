@@ -31,7 +31,7 @@ module {
   /// roots for heights 0 to depth.
   public func fillOf(depth : Nat) : Peaks.Fill = #zeros({
     table = Peaks.zeros(depth, false);
-    depth = ?depth;
+    depth;
   });
 
   /// An empty tree with 2^depth leaf places (depth at most 61): `Peaks` with
@@ -47,7 +47,7 @@ module {
   public func depthOf(tree : Peaks.Peaks) : ?Nat {
     if (tree.double) return null;
     switch (tree.fill) {
-      case (#zeros({ depth })) depth;
+      case (#zeros({ depth })) ?depth;
       case _ null;
     };
   };
@@ -99,28 +99,14 @@ module {
   /// a tree with root `root`. `branch` holds one sibling per level, lowest
   /// first, so its length is the depth: SSZ's `is_valid_merkle_branch`. A
   /// malformed branch gives `false`.
-  public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob) : Bool {
-    if (leaf.size() != 32 or branch.size() > 62) return false;
-    var j = 0;
-    while (j < branch.size()) {
-      if (branch[j].size() != 32) return false;
-      j += 1;
-    };
-    // The index must lie within a tree of that depth.
-    if (index > 2305843009213693951) return false; // 2^61 - 1: the largest bound that compares without allocating
-    let position = index.toNat64();
-    if ((position >> branch.size().toNat64()) != 0) return false;
-    let node = Hasher.new();
-    node.loadBlob32(leaf);
-    Peaks.foldBranch(node, position, branch, false);
-    node.equalsBlob32(root);
-  };
+  public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob) : Bool =
+    Peaks.verifyBranch(leaf, index, branch, root, false);
 
   /// A chunk verifier for the tree of 2^depth places with root `root` (the
   /// root without the length mixed in). See `Chunks`. An empty proof says
   /// only that every further chunk is zero; the number of chunks must be
   /// known from elsewhere.
-  public func verifier(root : Blob, depth : Nat) : Chunks.Verifier = Chunks.new(root, depth, false, fillOf(depth), false);
+  public func verifier(root : Blob, depth : Nat) : Chunks.Verifier = Chunks.onTree(root, new(depth), false);
 
   /// The same verifier on a tree that the caller owns (from `new`): the
   /// tree is emptied, nothing is allocated but the verifier's

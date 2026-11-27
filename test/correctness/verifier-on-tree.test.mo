@@ -29,6 +29,28 @@ assert Bitcoin.isBitcoin(trees[0]) and not Bitcoin.isBitcoin(trees[1]) and not B
 assert Bagged.isBagged(trees[1]) and not Bagged.isBagged(trees[0]) and not Bagged.isBagged(trees[2]);
 assert ZeroPadded.depthOf(trees[2]) == ?depth and ZeroPadded.depthOf(trees[0]) == null and ZeroPadded.depthOf(trees[1]) == null;
 
+// The rules of different formats differ, and so do two zero-padded depths.
+assert not Peaks.sameRules(trees[0], trees[1]) and not Peaks.sameRules(trees[1], trees[2]);
+assert not Peaks.sameRules(ZeroPadded.new(3), ZeroPadded.new(4)) and Peaks.sameRules(ZeroPadded.new(4), ZeroPadded.new(4));
+
+// The capacity is what the slots hold, or for a zero-padded tree no more
+// than its places.
+assert Bitcoin.withDepth(depth).capacity().toNat() + 1 == 2 ** (depth + 1);
+assert ZeroPadded.new(depth).capacity().toNat() == 2 ** depth;
+assert Peaks.withDepth(10, false, ZeroPadded.fillOf(5)).capacity() == 32;
+assert Peaks.withDepth(3, false, ZeroPadded.fillOf(5)).capacity() == 15;
+
+// A zero-padded tree whose slots reach deeper than its padding: a chunk
+// beyond its places is rejected, not trapped on.
+do {
+  let wide = Peaks.withDepth(10, false, ZeroPadded.fillOf(5));
+  let ls = leaves(33);
+  let v = ZeroPadded.verifierOn(Reference.padded(slice(ls, 0, 32), 5), wide);
+  assert not v.verifyChunk(ls, []) and v.broken() and wide.count == 0;
+  let w = ZeroPadded.verifierOn(Reference.padded(slice(ls, 0, 32), 5), wide);
+  assert w.verifyChunk(slice(ls, 0, 32), []) and w.complete();
+};
+
 let sizes : [Nat] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 257];
 
 // `Chunks.onTree` directly, with the check for equal siblings in Bitcoin.

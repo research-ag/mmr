@@ -155,8 +155,8 @@ The presets are thin. To build another tree format, use `Peaks` directly.
 - **The structure.** Slot k of the pool holds the root of the perfect subtree ("peak") of 2^k leaves, exactly when bit k of the leaf count is set. One more hasher is a spare for the node being worked on. The record also holds the tree's two rules: `double` (SHA-256 once or twice per node) and `fill` (the odd node). A preset is a constructor that chooses them: `Bitcoin.new(n)` is `Peaks.new(n, true, #copy)`.
 - **`carry(height)`** inserts the node in the spare as a peak of that height and merges upward while the count has a 1-bit: the increment of a binary counter. `add` is a carry at height 0, `addPair` fuses two leaves straight from their Blobs and carries at height 1, and the root of a whole subtree can be carried at its height. `addAll` adds a run of leaves in pairs, from any count.
 - **`close(proof, checked)`** computes a root without changing the peaks. Going up from the lowest peak, the node in hand meets a peak of the tree on its left where the count has a 1-bit, else the next entry of `proof` on its right, else what the tree's `fill` says: nothing (`#skip`, bagging), itself (`#copy`, Bitcoin), or the all-zero subtree of its height (`#zeros`). With an empty proof that is the root; with the peaks of the rest it verifies a prefix.
-- **`foldBranch`** folds a node up a list of siblings, for inclusion proofs.
-- **`copy`, `toBlobs`, `load`** save, export and restore the peaks.
+- **`foldBranch`** folds a node up a list of siblings, and **`verifyBranch`** checks an inclusion proof with one sibling per level (the presets' `verifyBranch` for Bitcoin and zero-padded trees).
+- **`copy`, `toBlobs`, `load`** save, export and restore the peaks. `copy` only goes between trees of the same rules (`sameRules`), and `load` refuses more leaves than the tree's `capacity`, which for a zero-padded tree is its number of places.
 
 `carryChecked`, `addChecked` and `close` with `checked` reject two equal siblings, which is what the Bitcoin preset uses against mutated lists.
 
