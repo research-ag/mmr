@@ -168,6 +168,7 @@ These trees have no domain separation. That is how the formats are defined, and 
 - **Bitcoin's duplication (CVE-2012-2459).** A list that writes out a duplicated tail has the same root as the shorter one: `[1,2,3]` and `[1,2,3,3]`. `Bitcoin.merkleRoot` traps on such a list, and the checked functions and the chunk verifier reject equal siblings. The plain `add` and `root` hash what they are given.
 - **Bagged roots do not commit to the leaf count.** `Bagged.verifyInclusion` takes the tree size as a parameter for that reason, and the caller has to know it.
 - **Zero padding hides trailing zeros.** A last leaf of 32 zero bytes cannot be told from padding. Where the length varies, mix it in (`ZeroPadded.rootWithLength`).
+- **A zero-padded tree has no root beyond its places.** `ZeroPadded.new(d)` accepts more than 2^d chunks, since adding checks nothing, but taking its root then traps. The chunk verifier rejects such a chunk instead.
 
 ## Stored state
 
@@ -209,7 +210,7 @@ mops bench
 mops format
 ```
 
-The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, over generated leaves and for the zero hashes of SSZ. `test/readme.test.mo` runs the examples of this README. The tests in `test/allocation/` check the allocation claims.
+The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, over generated leaves and for the zero hashes of SSZ. `test/readme.test.mo` runs the examples of this README. The tests in `test/allocation/` check the allocation claims, and those in `test/traps/` run in a replica, to check that a call traps.
 
 ## License
 

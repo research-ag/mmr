@@ -38,7 +38,8 @@ module {
   /// single SHA-256 and the fill `fillOf(depth)`. The deposit contract uses
   /// depth 32. Chunks are added, and the root taken, with the functions of
   /// `Peaks` (`add`, `root`); the root is padded with zero chunks to the
-  /// 2^depth places, and is defined for an empty tree as well.
+  /// 2^depth places, and is defined for an empty tree as well. The tree can
+  /// hold more than 2^depth chunks, but then has no root: `root` traps.
   public func new(depth : Nat) : Peaks.Peaks = Peaks.withDepth(depth, false, fillOf(depth));
 
   /// The depth of a zero-padded tree, or `null` if `tree` is not one (single
