@@ -56,7 +56,7 @@ let sizes : [Nat] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 
 // `Chunks.onTree` directly, with the check for equal siblings in Bitcoin.
 for (n in sizes.values()) {
   let ls = leaves(n);
-  let kinds : [(Peaks.Peaks, Bool, MerkleTree.MerkleTree, Blob)] = [
+  let kinds : [(Peaks.Tree, Bool, MerkleTree.MerkleTree, Blob)] = [
     (trees[0], true, Bitcoin.merkleTree(ls), Reference.bitcoin(ls)),
     (trees[1], false, Bagged.merkleTree(ls), Reference.bagged(ls)),
     (trees[2], false, ZeroPadded.merkleTree(ls, depth), Reference.padded(ls, depth)),

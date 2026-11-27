@@ -27,14 +27,14 @@ module {
   /// An empty bagged tree with room for at least `maxLeaves` leaves: `Peaks`
   /// with single SHA-256 and the `#skip` fill. Leaves are added, and the
   /// root taken, with the functions of `Peaks` (`add`, `addMessage`, `root`).
-  public func new(maxLeaves : Nat) : Peaks.Peaks = Peaks.new(maxLeaves, false, #skip);
+  public func new(maxLeaves : Nat) : Peaks.Tree = Peaks.new(maxLeaves, false, #skip);
 
   /// An empty bagged tree with room for 2^depth leaves (depth at most 61).
-  public func withDepth(depth : Nat) : Peaks.Peaks = Peaks.withDepth(depth, false, #skip);
+  public func withDepth(depth : Nat) : Peaks.Tree = Peaks.withDepth(depth, false, #skip);
 
   /// Whether `tree` has the bagged rules: single SHA-256 and the `#skip`
   /// fill.
-  public func isBagged(tree : Peaks.Peaks) : Bool = not tree.double and tree.fill == #skip;
+  public func isBagged(tree : Peaks.Tree) : Bool = not tree.double and tree.fill == #skip;
 
   /// The root of a complete list of leaves (at least one), in one shot.
   public func merkleRoot(leaves : [Blob]) : Blob {
@@ -94,7 +94,7 @@ module {
   /// rejected chunk fails the verifier (see `Chunks.onTree`). A tree made by
   /// `withDepth(d)` verifies up to 2^d leaves. Traps if the tree does not
   /// have the bagged rules (`isBagged`).
-  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
+  public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert isBagged(tree);
     Chunks.onTree(root, tree, false);
   };

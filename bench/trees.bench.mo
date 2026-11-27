@@ -72,9 +72,9 @@ module {
     );
 
     // A tree of its own for every cell that builds one.
-    let bitcoinTrees = Array.tabulate<[Peaks.Peaks]>(2, func(_) = counts.map<Nat, Peaks.Peaks>(Bitcoin.new));
-    let baggedTrees = counts.map<Nat, Peaks.Peaks>(Bagged.new);
-    let paddedTrees = counts.map<Nat, Peaks.Peaks>(func(_) = ZeroPadded.new(20));
+    let bitcoinTrees = Array.tabulate<[Peaks.Tree]>(2, func(_) = counts.map<Nat, Peaks.Tree>(Bitcoin.new));
+    let baggedTrees = counts.map<Nat, Peaks.Tree>(Bagged.new);
+    let paddedTrees = counts.map<Nat, Peaks.Tree>(func(_) = ZeroPadded.new(20));
 
     // Every way gives the same root.
     for (ls in leaves.values()) {

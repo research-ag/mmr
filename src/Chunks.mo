@@ -57,7 +57,7 @@ module {
     /// The root the leaves must hash to.
     root : Blob;
     /// The tree over the leaves accepted so far; `tree.count` is their number.
-    tree : Peaks.Peaks;
+    tree : Peaks.Tree;
     /// Whether equal siblings are rejected (see `Bitcoin`).
     checked : Bool;
     /// Whether a chunk has been accepted with an empty proof.
@@ -78,7 +78,7 @@ module {
   /// The presets have a `verifier` function that makes a tree with their
   /// rules for it, and a `verifierOn` function for a tree of the caller's.
   /// A rejected chunk makes the verifier `failed`.
-  public func onTree(root : Blob, tree : Peaks.Peaks, checked : Bool) : Verifier {
+  public func onTree(root : Blob, tree : Peaks.Tree, checked : Bool) : Verifier {
     assert root.size() == 32;
     tree.count := 0;
     {

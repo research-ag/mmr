@@ -60,7 +60,7 @@ mops add mmr
 ### Bitcoin
 
 A preset makes trees with its format's rules, and has the functions particular to the format.
-The tree itself is a `Peaks.Peaks`, whatever the format, and is used with the functions of `Peaks`, so that module is imported as well.
+The tree itself is a `Peaks.Tree`, whatever the format, and is used with the functions of `Peaks`, so that module is imported as well.
 
 ```motoko
 import Bitcoin "mo:mmr/Bitcoin";
@@ -172,7 +172,7 @@ These trees have no domain separation. That is how the formats are defined, and 
 
 ## Stored state
 
-`Peaks.Peaks` (the tree of every preset) and `Chunks.Verifier` are plain records without functions, so a canister can keep them in stable variables across upgrades.
+`Peaks.Tree` (the tree of every preset) and `Chunks.Verifier` are plain records without functions, so a canister can keep them in stable variables across upgrades.
 Their shapes are therefore part of the package's interface:
 
 - A change to a field of one of these types is a breaking change. The CHANGELOG marks it as such, and it comes with a new minor version while the package is at 0.x.

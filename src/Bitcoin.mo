@@ -42,13 +42,13 @@ module {
   /// An empty Bitcoin tree with room for at least `maxLeaves` txids: `Peaks`
   /// with double SHA-256 and the `#copy` fill. Txids are added, and the root
   /// taken, with the functions of `Peaks` (`add`, `addChecked`, `root`).
-  public func new(maxLeaves : Nat) : Peaks.Peaks = Peaks.new(maxLeaves, true, #copy);
+  public func new(maxLeaves : Nat) : Peaks.Tree = Peaks.new(maxLeaves, true, #copy);
 
   /// An empty Bitcoin tree with room for 2^depth txids (depth at most 61).
-  public func withDepth(depth : Nat) : Peaks.Peaks = Peaks.withDepth(depth, true, #copy);
+  public func withDepth(depth : Nat) : Peaks.Tree = Peaks.withDepth(depth, true, #copy);
 
   /// Whether `tree` has Bitcoin's rules: double SHA-256 and the `#copy` fill.
-  public func isBitcoin(tree : Peaks.Peaks) : Bool = tree.double and tree.fill == #copy;
+  public func isBitcoin(tree : Peaks.Tree) : Bool = tree.double and tree.fill == #copy;
 
   /// Whether `leaves` may be a MUTATED list: true if the last leaf equals the
   /// one 1, 2, 4, 8, ... places before it. That holds for every list that
@@ -104,7 +104,7 @@ module {
   /// that traps on a rejected chunk and keeps one tree for all its blocks. A
   /// tree made by `withDepth(d)` verifies up to 2^d transactions. Traps if
   /// the tree does not have Bitcoin's rules (`isBitcoin`).
-  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
+  public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert isBitcoin(tree);
     Chunks.onTree(root, tree, true);
   };

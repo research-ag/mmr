@@ -1,6 +1,6 @@
 # mmr changelog
 
-The shapes of the record types that a canister can store (`Peaks.Peaks`, `Chunks.Verifier`) are part of the interface. A change to one of them is listed as **Breaking (stored state)**.
+The shapes of the record types that a canister can store (`Peaks.Tree`, `Chunks.Verifier`) are part of the interface. A change to one of them is listed as **Breaking (stored state)**.
 
 ## 0.1.0
 

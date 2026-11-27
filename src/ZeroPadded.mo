@@ -40,11 +40,11 @@ module {
   /// `Peaks` (`add`, `root`); the root is padded with zero chunks to the
   /// 2^depth places, and is defined for an empty tree as well. The tree can
   /// hold more than 2^depth chunks, but then has no root: `root` traps.
-  public func new(depth : Nat) : Peaks.Peaks = Peaks.withDepth(depth, false, fillOf(depth));
+  public func new(depth : Nat) : Peaks.Tree = Peaks.withDepth(depth, false, fillOf(depth));
 
   /// The depth of a zero-padded tree, or `null` if `tree` is not one (single
   /// SHA-256, padded with zeros to a fixed depth).
-  public func depthOf(tree : Peaks.Peaks) : ?Nat {
+  public func depthOf(tree : Peaks.Tree) : ?Nat {
     if (tree.double) return null;
     switch (tree.fill) {
       case (#zeros({ depth })) ?depth;
@@ -75,7 +75,7 @@ module {
   /// The root of a zero-padded tree with the number of chunks mixed in: the
   /// `hash_tree_root` of an SSZ list of 32-byte elements with a limit of
   /// 2^depth, and the root of the deposit contract.
-  public func rootWithLength(self : Peaks.Peaks) : Blob = mixInLength(self.root(), self.count.toNat());
+  public func rootWithLength(self : Peaks.Tree) : Blob = mixInLength(self.root(), self.count.toNat());
 
   /// The root of a complete list of chunks, padded with zero chunks to
   /// `limit` places, or to the next power of two if `limit` is `null`: SSZ's
@@ -113,7 +113,7 @@ module {
   /// record, and a rejected chunk fails the verifier (see `Chunks.onTree`).
   /// The depth and the table of zero subtrees are the tree's own. Traps if
   /// the tree is not zero-padded (`depthOf`).
-  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
+  public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert depthOf(tree) != null;
     Chunks.onTree(root, tree, false);
   };
