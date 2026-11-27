@@ -1,13 +1,15 @@
 /// The core of the package: a Merkle mountain range as an array of peaks with
 /// a counter, and the few operations that every Merkle tree built from it
-/// shares. The presets (`Bitcoin`, `Bagged`, `Ssz`) and the chunk verifier
+/// shares. The presets (`Bitcoin`, `Bagged`, `ZeroPadded`) and the chunk verifier
 /// (`Chunks`) are thin layers over this module; use it directly to build a
 /// tree format of your own.
 ///
 /// Everything here hashes with SHA-256 and combines two 32-byte hashes as one
 /// 64-byte message, `H(left ++ right)`, with no prefix. A tree is either
-/// SINGLE (one SHA-256 per node) or DOUBLE (SHA-256 twice, as in Bitcoin).
-/// Nothing in this module allocates, except where a `Blob` or an array is
+/// SINGLE (one SHA-256 per node) or DOUBLE (SHA-256 twice, as in Bitcoin),
+/// and has a `Fill`, the rule for a node without a right sibling. These two
+/// rules are what tells the tree formats apart, and a tree keeps both in its
+/// record: the presets are only constructors that choose them. Nothing in this module allocates, except where a `Blob` or an array is
 /// returned.
 ///
 /// === The structure ===
@@ -30,7 +32,7 @@
 ///   - `close` computes a root from the peaks without changing them. It walks
 ///     up from the lowest peak: where the count has a 1-bit it combines with
 ///     the peak on the LEFT; elsewhere something has to stand on the RIGHT,
-///     and what that is distinguishes the tree formats (`Fill`). With a list
+///     and what that is is the tree's `Fill`. With a list
 ///     of peaks for the right-hand side, the same walk verifies a prefix of a
 ///     tree against its root.
 ///
@@ -50,11 +52,14 @@ import VarArray "mo:core/VarArray";
 module {
   /// The peaks of a tree. Slot k of `hasher` holds the peak of height k
   /// exactly when bit k of `count` is set; the last slot is the spare.
-  /// `double` selects double SHA-256 per node. A static record that can be
-  /// declared `stable`; its shape is part of the package's interface.
+  /// `double` selects double SHA-256 per node, and `fill` the rule for a
+  /// node without a right sibling when a root is computed. A static record
+  /// that can be declared `stable`; its shape is part of the package's
+  /// interface.
   public type Peaks = {
     hasher : [var Hasher.Hasher];
     double : Bool;
+    fill : Fill;
     var count : Nat64;
   };
 
@@ -80,20 +85,21 @@ module {
   /// An empty tree with room for at least `maxLeaves` leaves. Allocates
   /// `floor(log2 maxLeaves) + 2` hashers: one slot per bit of the count, and
   /// the spare.
-  public func new(maxLeaves : Nat, double : Bool) : Peaks {
+  public func new(maxLeaves : Nat, double : Bool, fill : Fill) : Peaks {
     assert maxLeaves >= 1;
     // floor(log2 maxLeaves), from the leading zeros. Not by doubling a `Nat`:
     // its multiplication allocates once the product passes 2^31.
-    withDepth((63 - Nat64.bitcountLeadingZero(maxLeaves.toNat64())).toNat(), double);
+    withDepth((63 - Nat64.bitcountLeadingZero(maxLeaves.toNat64())).toNat(), double, fill);
   };
 
   /// An empty tree with room for 2^depth leaves (depth at most 61): slots 0
   /// to depth, and the spare.
-  public func withDepth(depth : Nat, double : Bool) : Peaks {
+  public func withDepth(depth : Nat, double : Bool, fill : Fill) : Peaks {
     assert depth <= 61;
     {
       hasher = VarArray.tabulate<Hasher.Hasher>(depth + 2, func(_) { Hasher.new() });
       double;
+      fill;
       var count = 0;
     };
   };
@@ -257,7 +263,7 @@ module {
   ///
   ///   - the peak of the tree on its LEFT, where the count has a 1-bit,
   ///   - else the next entry of `proof` on its RIGHT,
-  ///   - else what `fill` says.
+  ///   - else what the tree's `fill` says.
   ///
   /// With an empty `proof` this is the root of the tree. With the peaks to
   /// the right of the tree's last leaf as `proof`, lowest first, it is the
@@ -266,8 +272,9 @@ module {
   ///
   /// With `checked`, returns `false` if two equal siblings would be combined.
   /// Also `false` if the walk goes beyond height 62. Otherwise `true`.
-  public func close(self : Peaks, proof : [Blob], fill : Fill, checked : Bool) : Bool {
+  public func close(self : Peaks, proof : [Blob], checked : Bool) : Bool {
     let hasher = self.hasher;
+    let fill = self.fill;
     let acc = hasher[hasher.size() - 1];
     let count = self.count;
     let double = self.double;
@@ -321,10 +328,10 @@ module {
     true;
   };
 
-  /// The root of the tree under the given `fill`, as a `Blob`. The tree is
-  /// left unchanged: keep adding leaves and take the root again.
-  public func root(self : Peaks, fill : Fill) : Blob {
-    ignore close(self, [], fill, false);
+  /// The root of the tree, as a `Blob`. The tree is left unchanged: keep
+  /// adding leaves and take the root again.
+  public func root(self : Peaks) : Blob {
+    ignore close(self, [], false);
     spare(self).readSum();
   };
 

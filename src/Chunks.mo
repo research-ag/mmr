@@ -7,7 +7,7 @@
 /// The verifier keeps the tree over the leaves accepted so far (`Peaks`). A
 /// chunk brings the next leaves and a PROOF for the leaves still to come: the
 /// peaks to the right of the chunk's last leaf, lowest first
-/// (`Prove.rightPeaks`). The verifier then
+/// (`MerkleTree.rightPeaks`). The verifier then
 ///
 ///   1. adds the leaves of the chunk to its tree,
 ///   2. closes the tree with the proof (`Peaks.close`),
@@ -57,8 +57,6 @@ module {
     root : Blob;
     /// The tree over the leaves accepted so far; `tree.count` is their number.
     tree : Peaks.Peaks;
-    /// The tree's rule for a node without a right sibling.
-    fill : Peaks.Fill;
     /// Whether equal siblings are rejected (see `Bitcoin`).
     checked : Bool;
     /// Whether a chunk has been accepted with an empty proof.
@@ -76,21 +74,20 @@ module {
   /// The verifier allocates its tree. A rejected chunk makes it `failed`.
   public func new(root : Blob, maxDepth : Nat, double : Bool, fill : Peaks.Fill, checked : Bool) : Verifier {
     assert maxDepth <= 61;
-    onTree(root, Peaks.withDepth(maxDepth, double), fill, checked);
+    onTree(root, Peaks.withDepth(maxDepth, double, fill), checked);
   };
 
   /// A verifier on a tree that the caller owns. The tree is emptied (its
   /// count set to 0; what its hashers hold does not matter), and its
-  /// `double` is the verifier's. A tree made by `Peaks.withDepth(d, ...)`
+  /// `double` and `fill` are the verifier's. A tree made by `Peaks.withDepth(d, ...)`
   /// verifies up to 2^d leaves. Only one verifier may use a tree at a time,
   /// and the caller must not touch it meanwhile.
-  public func onTree(root : Blob, tree : Peaks.Peaks, fill : Peaks.Fill, checked : Bool) : Verifier {
+  public func onTree(root : Blob, tree : Peaks.Peaks, checked : Bool) : Verifier {
     assert root.size() == 32;
     tree.count := 0;
     {
       root;
       tree;
-      fill;
       checked;
       var done = false;
       var failed = false;
@@ -142,7 +139,7 @@ module {
     // 1. Add the chunk, in pairs. 2. and 3. Close the tree with the proof
     // and compare with the root.
     if (
-      tree.addAll(leaves, 0, leaves.size(), self.checked) and tree.close(next, self.fill, self.checked) and tree.spare().equalsBlob32(self.root)
+      tree.addAll(leaves, 0, leaves.size(), self.checked) and tree.close(next, self.checked) and tree.spare().equalsBlob32(self.root)
     ) {
       // 4. Keep the grown tree.
       self.done := next.size() == 0;

@@ -4,7 +4,7 @@
 import Peaks "../../src/Peaks";
 import Bitcoin "../../src/Bitcoin";
 import Bagged "../../src/Bagged";
-import Ssz "../../src/Ssz";
+import ZeroPadded "../../src/ZeroPadded";
 import Nat "mo:core/Nat";
 import Fixtures "../support/Fixtures";
 import Reference "../support/Reference";
@@ -26,12 +26,12 @@ do {
     let withLength = Reference.withLength(padded, n);
     assert Bitcoin.merkleRoot(ls) == Reference.bitcoin(ls);
     assert Bagged.merkleRoot(ls) == Reference.bagged(ls);
-    assert Ssz.merkleize(ls, ?128) == padded;
+    assert ZeroPadded.merkleize(ls, ?128) == padded;
     // the same roots from a tree that is filled leaf by leaf
-    let t = Ssz.new(7);
+    let t = ZeroPadded.new(7);
     for (l in ls.values()) t.add(l);
     assert t.root() == padded and t.rootWithLength() == withLength;
-    assert Ssz.mixInLength(padded, n) == withLength;
+    assert ZeroPadded.mixInLength(padded, n) == withLength;
   };
 };
 
@@ -49,8 +49,8 @@ do {
     assert z[k] == expected;
     expected := Reference.sha(expected, expected);
   };
-  let deposits = Ssz.new(32);
+  let deposits = ZeroPadded.new(32);
   assert deposits.root() == z[32];
   assert deposits.rootWithLength() == Reference.withLength(z[32], 0);
-  assert Ssz.merkleize([], null) == z[0];
+  assert ZeroPadded.merkleize([], null) == z[0];
 };

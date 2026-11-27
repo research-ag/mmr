@@ -8,7 +8,7 @@
 import Peaks "../../src/Peaks";
 import Bitcoin "../../src/Bitcoin";
 import Bagged "../../src/Bagged";
-import Ssz "../../src/Ssz";
+import ZeroPadded "../../src/ZeroPadded";
 import Hasher "mo:sha2/Hasher/Sha256";
 import Sha256 "mo:sha2/Sha256";
 import Array "mo:core/Array";
@@ -31,22 +31,22 @@ let messages = Array.tabulate<Blob>(n, func(i) = ("leaf" # i.toText()).encodeUtf
 // Each way of adding a leaf, 1000 times over, in a tree that was sized for
 // it up front.
 do {
-  let t = Peaks.new(n, true);
+  let t = Peaks.new(n, true, #copy);
   check("add", alloc(func() { var i = 0; while (i < n) { t.add(ls[i]); i += 1 } }), 0);
-  let c = Peaks.new(n, true);
+  let c = Peaks.new(n, true, #copy);
   check("addChecked", alloc(func() { var i = 0; while (i < n) { assert c.addChecked(ls[i]); i += 1 } }), 0);
-  let p = Peaks.new(n, true);
+  let p = Peaks.new(n, true, #copy);
   check("addPair", alloc(func() { var i = 0; while (i < n) { p.addPair(ls[i], ls[i + 1]); i += 2 } }), 0);
-  let q = Peaks.new(n, true);
+  let q = Peaks.new(n, true, #copy);
   check("addPairChecked", alloc(func() { var i = 0; while (i < n) { assert q.addPairChecked(ls[i], ls[i + 1]); i += 2 } }), 0);
 
   // from a hasher that holds the leaf, and from a message that a digest
   // hashes
-  let s = Peaks.new(n, false);
+  let s = Peaks.new(n, false, #skip);
   let h = Hasher.new();
   h.loadBlob32(ls[0]);
   check("addState", alloc(func() { var i = 0; while (i < n) { s.addState(h); i += 1 } }), 0);
-  let m = Peaks.new(n, false);
+  let m = Peaks.new(n, false, #skip);
   let d = Sha256.new();
   check("addMessage", alloc(func() { var i = 0; while (i < n) { m.addMessage(d, messages[i]); i += 1 } }), 0);
 };
@@ -57,7 +57,7 @@ do {
 // check for equal siblings.
 do {
   for (checked in [false, true].values()) {
-    let t = Peaks.new(n, true);
+    let t = Peaks.new(n, true, #copy);
     check("addAll", alloc(func() { assert t.addAll(ls, 0, 301, checked) and t.addAll(ls, 301, n, checked) }), 0);
     assert t.count == 1000;
   };
@@ -74,15 +74,15 @@ do {
   let m = Bagged.new(n);
   let d = Sha256.new();
   check("Bagged.addMessage", alloc(func() { var i = 0; while (i < n) { m.addMessage(d, messages[i]); i += 1 } }), 0);
-  let z = Ssz.new(depth);
-  check("Ssz.add", alloc(func() { var i = 0; while (i < n) { z.add(ls[i]); i += 1 } }), 0);
+  let z = ZeroPadded.new(depth);
+  check("ZeroPadded.add", alloc(func() { var i = 0; while (i < n) { z.add(ls[i]); i += 1 } }), 0);
   check(
     "count, capacity, spare",
     alloc(
       func() {
-        assert b.count() == 1000 and g.count() == 1000 and z.count() == 1000;
-        assert b.peaks.capacity() >= 1000;
-        ignore b.peaks.spare();
+        assert b.count == 1000 and g.count == 1000 and z.count == 1000;
+        assert b.capacity() >= 1000;
+        ignore b.spare();
       }
     ),
     0,
@@ -95,7 +95,7 @@ do {
 // The root of a subtree added as one peak, at the heights 0 to 3, with and
 // without the check.
 do {
-  let t = Peaks.new(64, true);
+  let t = Peaks.new(64, true, #copy);
   check(
     "carry at heights 0 to 3",
     alloc(

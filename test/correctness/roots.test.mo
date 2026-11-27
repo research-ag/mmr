@@ -4,8 +4,8 @@
 import Peaks "../../src/Peaks";
 import Bitcoin "../../src/Bitcoin";
 import Bagged "../../src/Bagged";
-import Ssz "../../src/Ssz";
-import Prove "../../src/Prove";
+import ZeroPadded "../../src/ZeroPadded";
+import MerkleTree "../../src/MerkleTree";
 import Hasher "mo:sha2/Hasher/Sha256";
 import Sha256 "mo:sha2/Sha256";
 import Array "mo:core/Array";
@@ -38,7 +38,7 @@ for (n in sizes.values()) {
   // every leaf, to check each prefix of the list.
   let b = Bitcoin.new(n);
   let g = Bagged.new(n);
-  let z = Ssz.new(depth);
+  let z = ZeroPadded.new(depth);
   for (i in Nat.range(0, n)) {
     b.add(ls[i]);
     g.add(ls[i]);
@@ -53,42 +53,44 @@ for (n in sizes.values()) {
   assert b.root() == bitcoin and g.root() == bagged and z.root() == padded;
   // taking a root changes nothing
   assert b.root() == bitcoin;
-  assert b.count() == n.toNat64() and g.count() == n.toNat64() and z.count() == n.toNat64();
+  assert b.count == n.toNat64() and g.count == n.toNat64() and z.count == n.toNat64();
 
   // One shot, adding in pairs.
   assert Bitcoin.merkleRoot(ls) == bitcoin;
   assert Bagged.merkleRoot(ls) == bagged;
-  assert Ssz.merkleize(ls, ?(2 ** depth)) == padded;
+  assert ZeroPadded.merkleize(ls, ?(2 ** depth)) == padded;
 
   // The smallest depth: padded to the next power of two.
   let small = depthFor(n);
-  assert Ssz.merkleize(ls, null) == Reference.padded(ls, small);
-  assert g.peaks.root(#zeros({ table = Peaks.zeros(small, false); depth = null })) == Reference.padded(ls, small);
+  assert ZeroPadded.merkleize(ls, null) == Reference.padded(ls, small);
+  let unfixed = Peaks.new(n, false, #zeros({ table = Peaks.zeros(small, false); depth = null }));
+  ignore unfixed.addAll(ls, 0, n, false);
+  assert unfixed.root() == Reference.padded(ls, small);
 
-  // The prover's levels have the same roots.
-  assert Prove.root(Bitcoin.levels(ls)) == bitcoin;
-  assert Prove.root(Bagged.levels(ls)) == bagged;
-  assert Prove.root(Ssz.levels(ls, depth)) == padded;
+  // The prover's full trees have the same roots.
+  assert Bitcoin.merkleTree(ls).root() == bitcoin;
+  assert Bagged.merkleTree(ls).root() == bagged;
+  assert ZeroPadded.merkleTree(ls, depth).root() == padded;
 
   // Leaves from hashers.
-  let s = Peaks.new(n, true);
+  let s = Peaks.new(n, true, #copy);
   let h = Hasher.new();
   for (l in ls.values()) { h.loadBlob32(l); s.addState(h) };
-  assert s.root(#copy) == bitcoin;
+  assert s.root() == bitcoin;
 
   // Leaves from messages, hashed through a digest. A double tree's leaf is
   // the hash of the message once more, so its reference is the Bitcoin root
   // of the hashed leaves.
   let d = Sha256.new();
-  let single = Peaks.new(n, false);
-  let double = Peaks.new(n, true);
+  let single = Peaks.new(n, false, #skip);
+  let double = Peaks.new(n, true, #copy);
   for (i in Nat.range(0, n)) {
     let message = ("leaf" # i.toText()).encodeUtf8();
     single.addMessage(d, message);
     double.addMessage(d, message);
   };
-  assert single.root(#skip) == bagged;
-  assert double.root(#copy) == Reference.bitcoin(Array.tabulate<Blob>(n, func(i) = Sha256.fromBlob(ls[i])));
+  assert single.root() == bagged;
+  assert double.root() == Reference.bitcoin(Array.tabulate<Blob>(n, func(i) = Sha256.fromBlob(ls[i])));
 };
 
 // `addAll` from any count.
@@ -97,13 +99,13 @@ for (n in sizes.values()) {
 // leaf, with and without the check for equal siblings.
 for (n in ([1, 2, 3, 4, 5, 8, 9, 16, 17, 33] : [Nat]).values()) {
   let ls = leaves(n);
-  let one = Peaks.new(n, true);
+  let one = Peaks.new(n, true, #copy);
   for (l in ls.values()) one.add(l);
   let peaks = one.toBlobs();
   for (cut in Nat.range(0, n + 1)) {
     for (cut2 in ([cut, (cut + n) / 2, n] : [Nat]).values()) {
       for (checked in [false, true].values()) {
-        let t = Peaks.new(n, true);
+        let t = Peaks.new(n, true, #copy);
         assert t.addAll(ls, 0, cut, checked) and t.count == cut.toNat64();
         assert t.addAll(ls, cut, cut2, checked) and t.count == cut2.toNat64();
         assert t.addAll(ls, cut2, n, checked) and t.toBlobs() == peaks;
@@ -111,11 +113,11 @@ for (n in ([1, 2, 3, 4, 5, 8, 9, 16, 17, 33] : [Nat]).values()) {
     };
   };
   // An empty run adds nothing. A run inside the list adds only that run.
-  let t = Peaks.new(n, false);
+  let t = Peaks.new(n, false, #skip);
   assert t.addAll(ls, n, n, true) and t.count == 0;
   if (n >= 3) {
     assert t.addAll(ls, 1, n - 1 : Nat, false);
-    assert t.root(#skip) == Reference.bagged(slice(ls, 1, n - 1 : Nat));
+    assert t.root() == Reference.bagged(slice(ls, 1, n - 1 : Nat));
   };
 };
 
@@ -133,11 +135,11 @@ do {
       // the list that is the base 3 digits of `code`
       var c = code;
       let list = Array.tabulate<Blob>(n, func(_) { let v = values[c % 3]; c /= 3; v });
-      let one = Peaks.new(8, true);
+      let one = Peaks.new(8, true, #copy);
       var ok = true;
       for (l in list.values()) if (ok and not one.addChecked(l)) ok := false;
       for (cut in Nat.range(0, n)) {
-        let t = Peaks.new(8, true);
+        let t = Peaks.new(8, true, #copy);
         assert (t.addAll(list, 0, cut, true) and t.addAll(list, cut, n, true)) == ok;
         if (ok) assert t.toBlobs() == one.toBlobs();
       };
@@ -158,15 +160,15 @@ for (n in ([8, 12, 16, 20, 100] : [Nat]).values()) {
   for (k in Nat.range(0, 3)) {
     let width = 2 ** k;
     if (n % width == 0) {
-      let t = Peaks.new(n, true);
+      let t = Peaks.new(n, true, #copy);
       for (j in Nat.range(0, n / width)) {
         t.spare().loadBlob32(Reference.bitcoin(slice(ls, j * width, (j + 1) * width)));
         t.carry(k.toNat64());
       };
-      assert t.count == n.toNat64() and t.root(#copy) == Reference.bitcoin(ls);
+      assert t.count == n.toNat64() and t.root() == Reference.bitcoin(ls);
       let u = Bitcoin.new(n);
       for (l in ls.values()) u.add(l);
-      assert t.toBlobs() == u.peaks.toBlobs();
+      assert t.toBlobs() == u.toBlobs();
     };
   };
 };
@@ -174,24 +176,24 @@ for (n in ([8, 12, 16, 20, 100] : [Nat]).values()) {
 // Saving, exporting and restoring the peaks.
 for (n in ([1, 2, 3, 7, 8, 21, 100] : [Nat]).values()) {
   let ls = leaves(n);
-  let t = Peaks.new(200, true);
+  let t = Peaks.new(200, true, #copy);
   for (l in ls.values()) t.add(l);
   let peaks = t.toBlobs();
   assert peaks.size() == Nat64.bitcountNonZero(n.toNat64()).toNat();
 
   // copy aside, grow, copy back
-  let aside = Peaks.new(200, true);
+  let aside = Peaks.new(200, true, #copy);
   Peaks.copy(t, aside);
   t.add(leaf(1000));
-  assert t.root(#copy) != aside.root(#copy);
+  assert t.root() != aside.root();
   Peaks.copy(aside, t);
-  assert t.count == n.toNat64() and t.root(#copy) == Reference.bitcoin(ls) and t.toBlobs() == peaks;
+  assert t.count == n.toNat64() and t.root() == Reference.bitcoin(ls) and t.toBlobs() == peaks;
 
   // a fresh tree from the exported peaks goes on as the original does
-  let u = Peaks.new(200, true);
+  let u = Peaks.new(200, true, #copy);
   assert u.load(n.toNat64(), peaks);
   u.add(leaf(n));
-  assert u.root(#copy) == Reference.bitcoin(leaves(n + 1));
+  assert u.root() == Reference.bitcoin(leaves(n + 1));
 
   // malformed input is refused and changes nothing
   assert not u.load(n.toNat64() + 1, peaks.concat([leaf(0), leaf(1), leaf(2), leaf(3), leaf(4), leaf(5), leaf(6), leaf(7)]));

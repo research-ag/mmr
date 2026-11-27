@@ -4,8 +4,8 @@
 import Peaks "../../src/Peaks";
 import Bitcoin "../../src/Bitcoin";
 import Bagged "../../src/Bagged";
-import Ssz "../../src/Ssz";
-import Prove "../../src/Prove";
+import ZeroPadded "../../src/ZeroPadded";
+import MerkleTree "../../src/MerkleTree";
 import Array "mo:core/Array";
 import Nat "mo:core/Nat";
 import Hasher "mo:sha2/Hasher/Sha256";
@@ -16,7 +16,6 @@ let { leaf; leaves; slice; flip } = Fixtures;
 
 let sizes : [Nat] = Array.tabulate<Nat>(40, func(i) = i + 1).concat([63, 64, 65, 100, 257]);
 let depth = 9;
-let padFill = Ssz.fillOf(depth);
 
 // Closing a prefix with the peaks to its right.
 //
@@ -26,26 +25,26 @@ let padFill = Ssz.fillOf(depth);
 for (n in sizes.values()) {
   if (n <= 40) {
     let ls = leaves(n);
-    let kinds : [(Bool, Peaks.Fill, [[Blob]], Blob)] = [
-      (true, #copy, Bitcoin.levels(ls), Reference.bitcoin(ls)),
-      (false, #skip, Bagged.levels(ls), Reference.bagged(ls)),
-      (false, padFill, Ssz.levels(ls, depth), Reference.padded(ls, depth)),
+    let kinds : [(MerkleTree.MerkleTree, Blob)] = [
+      (Bitcoin.merkleTree(ls), Reference.bitcoin(ls)),
+      (Bagged.merkleTree(ls), Reference.bagged(ls)),
+      (ZeroPadded.merkleTree(ls, depth), Reference.padded(ls, depth)),
     ];
-    for ((double, fill, levels, root) in kinds.values()) {
+    for ((full, root) in kinds.values()) {
       // the empty prefix is the whole root, the whole list needs no peaks
-      assert Prove.rightPeaks(levels, 0) == [root] and Prove.rightPeaks(levels, n) == [];
-      let t = Peaks.new(2 ** depth, double);
+      assert full.rightPeaks(0) == [root] and full.rightPeaks(n) == [];
+      let t = Peaks.new(2 ** depth, full.double, full.fill);
       for (m in Nat.range(1, n + 1)) {
         t.add(ls[m - 1]);
-        let proof = Prove.rightPeaks(levels, m);
-        assert t.close(proof, fill, false) and t.spare().readSum() == root;
+        let proof = full.rightPeaks(m);
+        assert t.close(proof, false) and t.spare().readSum() == root;
         if (proof.size() > 0) {
-          ignore t.close(slice(proof, 1, proof.size()), fill, false);
+          ignore t.close(slice(proof, 1, proof.size()), false);
           assert t.spare().readSum() != root;
-          ignore t.close(Fixtures.flipFirst(proof), fill, false);
+          ignore t.close(Fixtures.flipFirst(proof), false);
           assert t.spare().readSum() != root;
         };
-        ignore t.close(proof.concat([leaf(999)]), fill, false);
+        ignore t.close(proof.concat([leaf(999)]), false);
         assert t.spare().readSum() != root;
       };
     };
@@ -59,13 +58,13 @@ for (n in sizes.values()) {
 for (n in sizes.values()) {
   if (n <= 40 or n == 100) {
     let ls = leaves(n);
-    let bLevels = Bitcoin.levels(ls);
-    let gLevels = Bagged.levels(ls);
-    let zLevels = Ssz.levels(ls, depth);
+    let bFull = Bitcoin.merkleTree(ls);
+    let gFull = Bagged.merkleTree(ls);
+    let zFull = ZeroPadded.merkleTree(ls, depth);
     let (bRoot, gRoot, zRoot) = (Reference.bitcoin(ls), Reference.bagged(ls), Reference.padded(ls, depth));
     for (i in Nat.range(0, n)) {
       // Bitcoin
-      let bb = Prove.branch(bLevels, i, #copy);
+      let bb = bFull.branch(i);
       assert Bitcoin.verifyBranch(ls[i], i, bb, bRoot);
       assert not Bitcoin.verifyBranch(flip(ls[i]), i, bb, bRoot);
       assert not Bitcoin.verifyBranch(ls[i], i, bb, flip(bRoot));
@@ -77,13 +76,13 @@ for (n in sizes.values()) {
       };
 
       // zero-padded
-      let zb = Prove.branch(zLevels, i, padFill);
-      assert zb.size() == depth and Ssz.verifyBranch(ls[i], i, zb, zRoot);
-      assert not Ssz.verifyBranch(flip(ls[i]), i, zb, zRoot);
-      assert not Ssz.verifyBranch(ls[i], i + 1, zb, zRoot);
+      let zb = zFull.branch(i);
+      assert zb.size() == depth and ZeroPadded.verifyBranch(ls[i], i, zb, zRoot);
+      assert not ZeroPadded.verifyBranch(flip(ls[i]), i, zb, zRoot);
+      assert not ZeroPadded.verifyBranch(ls[i], i + 1, zb, zRoot);
 
       // bagged
-      let gp = Prove.branch(gLevels, i, #skip);
+      let gp = gFull.branch(i);
       assert Bagged.verifyInclusion(ls[i], i, n, gp, gRoot);
       assert not Bagged.verifyInclusion(flip(ls[i]), i, n, gp, gRoot);
       assert not Bagged.verifyInclusion(ls[i], i, n, gp.concat([leaf(999)]), gRoot);
@@ -92,7 +91,7 @@ for (n in sizes.values()) {
     };
     // Malformed proofs give false, they do not trap.
     assert not Bitcoin.verifyBranch(ls[0], 0, [("short" : Blob)], bRoot);
-    assert not Ssz.verifyBranch(("short" : Blob), 0, [], zRoot);
+    assert not ZeroPadded.verifyBranch(("short" : Blob), 0, [], zRoot);
     assert not Bagged.verifyInclusion(ls[0], 0, n, [("short" : Blob)], gRoot);
   };
 };

@@ -37,7 +37,7 @@ module {
     oneHasher : Nat;
     // One slot of an array.
     word : Nat;
-    // The smallest tree: `Peaks.withDepth(0, true)`.
+    // The smallest tree: `Peaks.withDepth(0, true, #copy)`.
     pool0 : Nat;
   };
 
@@ -49,7 +49,7 @@ module {
     let readout = alloc(func() { ignore probe.readSum() });
     let oneHasher = alloc(func() { ignore Hasher.new() });
     let word = alloc(func() { ignore Prim.Array_init<Nat>(2, 0) }) - alloc(func() { ignore Prim.Array_init<Nat>(1, 0) }) : Nat;
-    let pool0 = alloc(func() { ignore Peaks.withDepth(0, true) });
+    let pool0 = alloc(func() { ignore Peaks.withDepth(0, true, #copy) });
     assert readout > 0 and oneHasher > 0;
     { readout; oneHasher; word; pool0 };
   };

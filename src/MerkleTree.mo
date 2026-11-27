@@ -1,14 +1,18 @@
-/// The PROVER: proofs computed from all the leaves of a tree. This is the
-/// side that has the whole list, typically off-chain or in a test; the
-/// verifying side (`Peaks.close`, `Peaks.foldBranch`, `Chunks`) needs only the
-/// peaks.
+/// The whole tree, every level of it: what the PROVER needs. This is the
+/// side that has all the leaves, typically off-chain or in a test; the
+/// verifying side (`Peaks.close`, `Peaks.foldBranch`, `Chunks`) keeps only
+/// the peaks.
 ///
-/// The functions work on the LEVELS of a tree: level 0 is the leaves, and
-/// each next level the hashes of pairs of the one below. A last node without
-/// a partner is treated as the tree's `Fill` says: moved up as it is
-/// (`#skip`), paired with itself (`#copy`), or paired with the all-zero
-/// subtree of its height (`#zeros`). The levels hold only nodes that cover
-/// real leaves, so they take about twice the memory of the leaves.
+/// The LEVELS of a tree: level 0 is the leaves, and each next level the
+/// hashes of pairs of the one below. A last node without a partner is
+/// treated as the tree's `Fill` says: moved up as it is (`#skip`), paired
+/// with itself (`#copy`), or paired with the all-zero subtree of its height
+/// (`#zeros`). The levels hold only nodes that cover real leaves, so they
+/// take about twice the memory of the leaves.
+///
+/// A `MerkleTree` keeps its levels together with the rules they were built
+/// with, so that the proofs taken from it are always those of its format.
+/// The presets have a `merkleTree` function that fills the rules in.
 
 import Hasher "mo:sha2/Hasher/Sha256";
 import Array "mo:core/Array";
@@ -17,10 +21,17 @@ import Nat "mo:core/Nat";
 import Peaks "Peaks";
 
 module {
-  /// The levels of the tree over `leaves` (at least one, each 32 bytes),
-  /// built with the given `fill` and single or double SHA-256. The last level
-  /// is the root alone.
-  public func levels(leaves : [Blob], fill : Peaks.Fill, double : Bool) : [[Blob]] {
+  /// The levels of a tree, leaves first and the root alone last, with the
+  /// rules they were built with.
+  public type MerkleTree = {
+    levels : [[Blob]];
+    fill : Peaks.Fill;
+    double : Bool;
+  };
+
+  /// The tree over `leaves` (at least one, each 32 bytes), built with the
+  /// given `fill` and single or double SHA-256.
+  public func build(leaves : [Blob], fill : Peaks.Fill, double : Bool) : MerkleTree {
     assert leaves.size() >= 1;
     let h = Hasher.new();
     func node(left : Blob, right : Blob) : Blob {
@@ -52,20 +63,24 @@ module {
       all.add(level);
       k += 1;
     };
-    all.toArray();
+    { levels = all.toArray(); fill; double };
   };
 
-  /// The root, from the levels.
-  public func root(levels : [[Blob]]) : Blob = levels[levels.size() - 1][0];
+  /// The number of leaves.
+  public func size(self : MerkleTree) : Nat = self.levels[0].size();
+
+  /// The root.
+  public func root(self : MerkleTree) : Blob = self.levels[self.levels.size() - 1][0];
 
   /// The proof for the first `m` leaves (0 <= m <= n): the PEAKS TO THE RIGHT
   /// of leaf m - 1, lowest first. These are the right siblings of that leaf's
   /// ancestors, as far as they cover real leaves. The root alone for m = 0,
   /// empty for m = n. This is what `Peaks.close` and `Chunks.verifyChunk`
   /// take as `proof`.
-  public func rightPeaks(levels : [[Blob]], m : Nat) : [Blob] {
+  public func rightPeaks(self : MerkleTree, m : Nat) : [Blob] {
+    let levels = self.levels;
     assert m <= levels[0].size();
-    if (m == 0) return [root(levels)];
+    if (m == 0) return [root(self)];
     let out = List.empty<Blob>();
     var k = 0;
     while (k < levels.size()) {
@@ -80,16 +95,16 @@ module {
   /// ancestors, lowest first. Where a node has no sibling, `#copy` writes the
   /// node itself and `#zeros` the zero subtree, so that those branches have
   /// one entry per level and suit `Peaks.foldBranch`; `#skip` leaves the
-  /// level out, as RFC 6962 does (see `Bagged.verifyInclusion`). `fill` must
-  /// be the one the levels were built with.
-  public func branch(levels : [[Blob]], index : Nat, fill : Peaks.Fill) : [Blob] {
+  /// level out, as RFC 6962 does (see `Bagged.verifyInclusion`).
+  public func branch(self : MerkleTree, index : Nat) : [Blob] {
+    let levels = self.levels;
     assert index < levels[0].size();
     let out = List.empty<Blob>();
     var k = 0;
     while (k + 1 < levels.size()) {
       let idx = index / (2 ** k);
       let sibling = if (idx % 2 == 0) idx + 1 else (idx - 1 : Nat);
-      if (sibling < levels[k].size()) out.add(levels[k][sibling]) else switch fill {
+      if (sibling < levels[k].size()) out.add(levels[k][sibling]) else switch (self.fill) {
         case (#skip) {};
         case (#copy) out.add(levels[k][idx]);
         case (#zeros({ table })) out.add(table[k]);

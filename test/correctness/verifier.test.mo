@@ -4,9 +4,9 @@
 // verifier for good.
 import Bitcoin "../../src/Bitcoin";
 import Bagged "../../src/Bagged";
-import Ssz "../../src/Ssz";
+import ZeroPadded "../../src/ZeroPadded";
 import Chunks "../../src/Chunks";
-import Prove "../../src/Prove";
+import MerkleTree "../../src/MerkleTree";
 import Array "mo:core/Array";
 import Nat "mo:core/Nat";
 import Fixtures "../support/Fixtures";
@@ -25,21 +25,21 @@ let depth = 9;
 // `make` creates a fresh verifier for a root. `minimal` tells whether the
 // format's root is complete exactly when the last leaf is in (Bitcoin and
 // bagged); a zero-padded tree is complete only at its full depth.
-func battery(ls : [Blob], levels : [[Blob]], root : Blob, make : Blob -> Chunks.Verifier, minimal : Bool) {
+func battery(ls : [Blob], full : MerkleTree.MerkleTree, root : Blob, make : Blob -> Chunks.Verifier, minimal : Bool) {
   let n = ls.size();
   for (step in ([1, 2, 3, 5, 8, 1000] : [Nat]).values()) {
     let v = make(root);
     var m = 0;
     for (m2 in Fixtures.chunkEnds(n, step).values()) {
       let chunk = slice(ls, m, m2);
-      let p = Prove.rightPeaks(levels, m2);
+      let p = full.rightPeaks(m2);
 
       // Each rejection is tried on a fresh verifier brought to the same
       // point. It must fail the verifier, which then rejects even the
       // honest chunk.
       func rejected(c : [Blob], proof : [Blob]) {
         let w = make(root);
-        if (m > 0) assert w.verifyChunk(slice(ls, 0, m), Prove.rightPeaks(levels, m));
+        if (m > 0) assert w.verifyChunk(slice(ls, 0, m), full.rightPeaks(m));
         assert not w.verifyChunk(c, proof);
         assert w.broken() and not w.complete();
         assert not w.verifyChunk(chunk, p);
@@ -76,9 +76,9 @@ func battery(ls : [Blob], levels : [[Blob]], root : Blob, make : Blob -> Chunks.
 
 for (n in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 257] : [Nat]).values()) {
   let ls = leaves(n);
-  battery(ls, Bitcoin.levels(ls), Reference.bitcoin(ls), func(r) = Bitcoin.verifier(r, 10), true);
-  battery(ls, Bagged.levels(ls), Reference.bagged(ls), func(r) = Bagged.verifier(r, 10), true);
-  battery(ls, Ssz.levels(ls, depth), Reference.padded(ls, depth), func(r) = Ssz.verifier(r, depth), false);
+  battery(ls, Bitcoin.merkleTree(ls), Reference.bitcoin(ls), func(r) = Bitcoin.verifier(r, 10), true);
+  battery(ls, Bagged.merkleTree(ls), Reference.bagged(ls), func(r) = Bagged.verifier(r, 10), true);
+  battery(ls, ZeroPadded.merkleTree(ls, depth), Reference.padded(ls, depth), func(r) = ZeroPadded.verifier(r, depth), false);
 
   // More leaves than the verifier has room for are rejected.
   let d = depthFor(n);

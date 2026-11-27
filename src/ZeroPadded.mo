@@ -24,42 +24,32 @@ import Nat "mo:core/Nat";
 import Nat64 "mo:core/Nat64";
 import Chunks "Chunks";
 import Peaks "Peaks";
-import Prove "Prove";
+import MerkleTree "MerkleTree";
 
 module {
-  /// A tree with room for 2^depth chunks: the peaks, and the rule for
-  /// padding, which holds the table of all-zero subtree roots for heights 0
-  /// to depth. A static record that can be declared `stable`; its shape is
-  /// part of the package's interface.
-  public type Tree = {
-    peaks : Peaks.Peaks;
-    fill : Peaks.Fill;
-    depth : Nat;
-  };
-
-  /// The `Fill` of a tree of 2^depth places.
+  /// The `Fill` of a tree of 2^depth places: the table of all-zero subtree
+  /// roots for heights 0 to depth.
   public func fillOf(depth : Nat) : Peaks.Fill = #zeros({
     table = Peaks.zeros(depth, false);
     depth = ?depth;
   });
 
-  /// An empty tree with 2^depth leaf places (depth at most 61). The deposit
-  /// contract uses depth 32.
-  public func new(depth : Nat) : Tree = {
-    peaks = Peaks.withDepth(depth, false);
-    fill = fillOf(depth);
-    depth;
+  /// An empty tree with 2^depth leaf places (depth at most 61): `Peaks` with
+  /// single SHA-256 and the fill `fillOf(depth)`. The deposit contract uses
+  /// depth 32. Chunks are added, and the root taken, with the functions of
+  /// `Peaks` (`add`, `root`); the root is padded with zero chunks to the
+  /// 2^depth places, and is defined for an empty tree as well.
+  public func new(depth : Nat) : Peaks.Peaks = Peaks.withDepth(depth, false, fillOf(depth));
+
+  /// The depth of a zero-padded tree, or `null` if `tree` is not one (single
+  /// SHA-256, padded with zeros to a fixed depth).
+  public func depthOf(tree : Peaks.Peaks) : ?Nat {
+    if (tree.double) return null;
+    switch (tree.fill) {
+      case (#zeros({ depth })) depth;
+      case _ null;
+    };
   };
-
-  /// Add a chunk (32 bytes).
-  public func add(self : Tree, chunk : Blob) = self.peaks.add(chunk);
-
-  /// The number of chunks added so far.
-  public func count(self : Tree) : Nat64 = self.peaks.count;
-
-  /// The root of the tree, padded with zero chunks to its 2^depth places.
-  /// Defined for an empty tree as well. The tree is left unchanged.
-  public func root(self : Tree) : Blob = self.peaks.root(self.fill);
 
   /// `H(root ++ length)`, with the length as a 32-byte little-endian number:
   /// SSZ's `mix_in_length`. Traps for a length of 2^64 or more.
@@ -81,10 +71,10 @@ module {
     h.readSum();
   };
 
-  /// The root with the number of chunks mixed in: the `hash_tree_root` of an
-  /// SSZ list of 32-byte elements with a limit of 2^depth, and the root of
-  /// the deposit contract.
-  public func rootWithLength(self : Tree) : Blob = mixInLength(root(self), self.peaks.count.toNat());
+  /// The root of a zero-padded tree with the number of chunks mixed in: the
+  /// `hash_tree_root` of an SSZ list of 32-byte elements with a limit of
+  /// 2^depth, and the root of the deposit contract.
+  public func rootWithLength(self : Peaks.Peaks) : Blob = mixInLength(self.root(), self.count.toNat());
 
   /// The root of a complete list of chunks, padded with zero chunks to
   /// `limit` places, or to the next power of two if `limit` is `null`: SSZ's
@@ -100,8 +90,8 @@ module {
     // subtraction) allocates for a large limit.
     let depth = if (places <= 1) 0 else (64 - Nat64.bitcountLeadingZero(places.toNat64() - 1)).toNat();
     let tree = new(depth);
-    ignore tree.peaks.addAll(chunks, 0, chunks.size(), false);
-    root(tree);
+    ignore tree.addAll(chunks, 0, chunks.size(), false);
+    tree.root();
   };
 
   /// Verify a MERKLE BRANCH: that `leaf` is the chunk at position `index` of
@@ -134,11 +124,15 @@ module {
   /// The same verifier on a tree that the caller owns (from `new`): the
   /// tree is emptied, nothing is allocated but the verifier's
   /// record, and a rejected chunk fails the verifier (see `Chunks.onTree`).
-  /// The depth and the table of zero subtrees are the tree's own.
-  public func verifierOn(root : Blob, tree : Tree) : Chunks.Verifier = Chunks.onTree(root, tree.peaks, tree.fill, false);
+  /// The depth and the table of zero subtrees are the tree's own. Traps if
+  /// the tree is not zero-padded (`depthOf`).
+  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
+    assert depthOf(tree) != null;
+    Chunks.onTree(root, tree, false);
+  };
 
-  /// The levels of the tree of 2^depth places over `chunks` (at least one),
-  /// for `Prove.rightPeaks` (the proofs of the chunk verifier) and
-  /// `Prove.branch` (Merkle branches; pass the same fill, `fillOf(depth)`).
-  public func levels(chunks : [Blob], depth : Nat) : [[Blob]] = Prove.levels(chunks, fillOf(depth), false);
+  /// The whole tree of 2^depth places over `chunks` (at least one), for
+  /// `MerkleTree.rightPeaks` (the proofs of the chunk verifier) and
+  /// `MerkleTree.branch` (Merkle branches).
+  public func merkleTree(chunks : [Blob], depth : Nat) : MerkleTree.MerkleTree = MerkleTree.build(chunks, fillOf(depth), false);
 };
