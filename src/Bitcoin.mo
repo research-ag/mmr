@@ -128,15 +128,15 @@ module {
   /// lists are rejected. See `Chunks`.
   public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, true, #copy, true);
 
-  /// The same verifier on a tree that the caller owns, without a backup: the
+  /// The same verifier on a tree that the caller owns: the
   /// tree is emptied, nothing is allocated but the verifier's record, and a
-  /// rejected chunk breaks the verifier (see `Chunks.onTree`). For a canister
+  /// rejected chunk fails the verifier (see `Chunks.onTree`). For a canister
   /// that traps on a rejected chunk and keeps one tree for all its blocks. A
   /// tree made by `Peaks.withDepth(d, true)` verifies up to 2^d transactions.
   /// Traps if the tree does not use double SHA-256.
   public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
     assert tree.double;
-    Chunks.onTree(root, tree, null, #copy, true);
+    Chunks.onTree(root, tree, #copy, true);
   };
 
   /// The levels of the tree over `txids`, for `Prove.rightPeaks` (the proofs

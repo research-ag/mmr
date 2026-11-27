@@ -104,14 +104,14 @@ module {
   /// and the note above: the root does not say how many leaves there are.
   public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, false, #skip, false);
 
-  /// The same verifier on a tree that the caller owns, without a backup: the
+  /// The same verifier on a tree that the caller owns: the
   /// tree is emptied, nothing is allocated but the verifier's record, and a
-  /// rejected chunk breaks the verifier (see `Chunks.onTree`). A tree made by
+  /// rejected chunk fails the verifier (see `Chunks.onTree`). A tree made by
   /// `Peaks.withDepth(d, false)` verifies up to 2^d leaves. Traps if the tree
   /// uses double SHA-256.
   public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
     assert not tree.double;
-    Chunks.onTree(root, tree, null, #skip, false);
+    Chunks.onTree(root, tree, #skip, false);
   };
 
   /// The levels of the tree over `leaves`, for `Prove.rightPeaks` (the proofs

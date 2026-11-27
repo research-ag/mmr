@@ -20,18 +20,12 @@
 ///
 /// === A rejected chunk ===
 ///
-/// A chunk's leaves are added before the check can fail. What happens to the
-/// tree then is the caller's choice:
-///
-///   - WITH A BACKUP (`new`, and the presets' `verifier`), the peaks are
-///     copied aside before every chunk and copied back if it is rejected. The
-///     verifier is as it was, and the upload can go on with a correct chunk.
-///
-///   - WITHOUT ONE (`onTree` with `null`), nothing is copied, and a chunk
-///     that fails after its leaves were added leaves the tree half-updated.
-///     The verifier is then BROKEN and accepts nothing more. This suits a
-///     canister that traps on a rejected chunk: the trap rolls the call back,
-///     the tree with it, and a backup would never be read.
+/// A chunk's leaves are added before the check can fail, so nothing is copied
+/// aside and a rejected chunk may leave the tree half-updated. A rejected
+/// chunk, of whatever kind (malformed, too long, not matching the root), makes
+/// the verifier FAILED (`broken`): it accepts nothing more. A
+/// canister that traps on a rejected chunk gets the same by the trap rolling
+/// the call back; one that does not must drop the verifier.
 ///
 /// `onTree` also lets the caller own the hashers: one tree, allocated once,
 /// can serve one verifier after another. The presets have a `verifierOn`
@@ -63,16 +57,14 @@ module {
     root : Blob;
     /// The tree over the leaves accepted so far; `tree.count` is their number.
     tree : Peaks.Peaks;
-    /// Room to copy the peaks aside while a chunk is being checked, if a
-    /// rejected chunk is to leave the verifier as it was.
-    backup : ?Peaks.Peaks;
     /// The tree's rule for a node without a right sibling.
     fill : Peaks.Fill;
     /// Whether equal siblings are rejected (see `Bitcoin`).
     checked : Bool;
     /// Whether a chunk has been accepted with an empty proof.
     var done : Bool;
-    /// Whether a chunk was rejected with no backup to restore the tree from.
+    /// Whether a chunk was rejected after its leaves were added. The tree is
+    /// then half-updated and the verifier accepts nothing more.
     var failed : Bool;
   };
 
@@ -81,11 +73,10 @@ module {
   /// `fill`. With `checked`, a chunk that would combine two equal siblings is
   /// rejected. The presets have a `verifier` function that fills these in.
   ///
-  /// The verifier allocates its tree and a backup, so that a rejected chunk
-  /// leaves it unchanged.
+  /// The verifier allocates its tree. A rejected chunk makes it `failed`.
   public func new(root : Blob, maxDepth : Nat, double : Bool, fill : Peaks.Fill, checked : Bool) : Verifier {
     assert maxDepth <= 61;
-    onTree(root, Peaks.withDepth(maxDepth, double), ?Peaks.withDepth(maxDepth, double), fill, checked);
+    onTree(root, Peaks.withDepth(maxDepth, double), fill, checked);
   };
 
   /// A verifier on a tree that the caller owns. The tree is emptied (its
@@ -93,21 +84,12 @@ module {
   /// `double` is the verifier's. A tree made by `Peaks.withDepth(d, ...)`
   /// verifies up to 2^d leaves. Only one verifier may use a tree at a time,
   /// and the caller must not touch it meanwhile.
-  ///
-  /// `backup` is a second tree of at least the same size, or `null`. With
-  /// `null`, a chunk that is rejected after its leaves were added breaks the
-  /// verifier: it accepts nothing more, and the caller must trap or drop it.
-  public func onTree(root : Blob, tree : Peaks.Peaks, backup : ?Peaks.Peaks, fill : Peaks.Fill, checked : Bool) : Verifier {
+  public func onTree(root : Blob, tree : Peaks.Peaks, fill : Peaks.Fill, checked : Bool) : Verifier {
     assert root.size() == 32;
-    switch backup {
-      case (?b) assert b.hasher.size() >= tree.hasher.size();
-      case null {};
-    };
     tree.count := 0;
     {
       root;
       tree;
-      backup;
       fill;
       checked;
       var done = false;
@@ -133,8 +115,8 @@ module {
     true;
   };
 
-  /// Whether the verifier is broken: a chunk was rejected and there was no
-  /// backup to restore the tree from (see `onTree`).
+  /// Whether the verifier has failed: a chunk was rejected after its leaves
+  /// were added. It accepts nothing more.
   public func broken(self : Verifier) : Bool = self.failed;
 
   /// Verify the next chunk of leaves (32 bytes each) with the proof `next`
@@ -142,20 +124,20 @@ module {
   /// and the verifier advances; otherwise `false`. An empty `next` claims
   /// that the chunk is the last one. Allocation-free.
   ///
-  /// After `false` a verifier with a backup is unchanged. One without is
-  /// unchanged if the chunk was malformed or too long, and broken otherwise.
+  /// After `false` the verifier has failed, whatever was wrong with the chunk
+  /// (a call on a verifier that is done or has failed changes nothing).
   public func verifyChunk(self : Verifier, leaves : [Blob], next : [Blob]) : Bool {
-    if (self.done or self.failed or leaves.size() == 0) return false;
+    if (self.done or self.failed) return false;
     let tree = self.tree;
     // A tree of 2^maxDepth leaves is the most there is room for, and its
     // proofs have at most one peak per level. A longer proof is not walked.
     let maxDepth = tree.hasher.size() - 2 : Nat;
-    if (next.size() > maxDepth or not wellFormed(leaves) or not wellFormed(next)) return false;
     let maxLeaves = (tree.capacity() + 1) / 2;
-    if (leaves.size().toNat64() > maxLeaves - tree.count) return false;
-    switch (self.backup) {
-      case (?backup) Peaks.copy(tree, backup);
-      case null {};
+    if (
+      leaves.size() == 0 or next.size() > maxDepth or not wellFormed(leaves) or not wellFormed(next) or leaves.size().toNat64() > maxLeaves - tree.count
+    ) {
+      self.failed := true;
+      return false;
     };
     // 1. Add the chunk, in pairs. 2. and 3. Close the tree with the proof
     // and compare with the root.
@@ -166,10 +148,7 @@ module {
       self.done := next.size() == 0;
       return true;
     };
-    switch (self.backup) {
-      case (?backup) Peaks.copy(backup, tree);
-      case null self.failed := true;
-    };
+    self.failed := true;
     false;
   };
 };

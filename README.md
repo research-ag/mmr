@@ -90,26 +90,23 @@ if (verifier.complete()) { /* that was the last chunk */ };
 
 The proof that goes with a chunk is the list of peaks to the right of the chunk's last leaf; the last chunk has an empty one.
 The uploader computes them with `Prove.rightPeaks`.
-A rejected chunk leaves the verifier as it was, and verification allocates nothing.
+A rejected chunk makes the verifier `failed`: it accepts nothing more. Verification allocates nothing.
 
 Each chunk costs its leaves plus one hash per level of the tree, so this suits a few large chunks better than many small ones.
 
-To leave a verifier unchanged after a rejected chunk, it keeps a backup of its peaks.
-A canister that traps on a rejected chunk does not need one, because the trap rolls the call back.
-It can also keep a single tree for all its uploads:
+A canister that traps on a rejected chunk can keep a single tree for all its uploads:
 
 ```motoko
 import Peaks "mo:mmr/Peaks";
 
 let tree = Peaks.withDepth(14, true); // once: at most 2^14 leaves, double SHA-256
 
-// per upload: a verifier on that tree, with no backup
+// per upload: a verifier on that tree
 let verifier = Bitcoin.verifierOn(root, tree);
 if (not verifier.verifyChunk(chunk, proof)) { /* trap */ };
 ```
 
-Without a backup, a chunk that fails leaves the tree half-updated, and the verifier accepts nothing more (`broken`).
-`Bagged` and `Ssz` have a `verifierOn` as well; `Chunks.onTree` is the general form, with the rules of the tree and an optional backup as arguments.
+`Bagged` and `Ssz` have a `verifierOn` as well; `Chunks.onTree` is the general form, with the rules of the tree as arguments.
 
 ## The core
 
@@ -172,7 +169,7 @@ mops bench
 mops format
 ```
 
-The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, with vectors from an independent implementation, and with known constants of Bitcoin and of Ethereum's consensus layer. A second test file checks the allocation claims.
+The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, over generated leaves and for the zero hashes of SSZ. The tests in `test/allocation/` check the allocation claims.
 
 ## License
 
