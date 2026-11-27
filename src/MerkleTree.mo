@@ -18,6 +18,7 @@ import Hasher "mo:sha2/Hasher/Sha256";
 import Array "mo:core/Array";
 import List "mo:core/List";
 import Nat "mo:core/Nat";
+import Runtime "mo:core/Runtime";
 import Peaks "Peaks";
 
 module {
@@ -30,7 +31,8 @@ module {
   };
 
   /// The tree over `leaves` (at least one, each 32 bytes), built with the
-  /// given `fill` and single or double SHA-256.
+  /// given `fill` and single or double SHA-256. Traps if the fill pads to a
+  /// fixed depth d and there are more than 2^d leaves.
   public func build(leaves : [Blob], fill : Peaks.Fill, double : Bool) : MerkleTree {
     assert leaves.size() >= 1;
     let h = Hasher.new();
@@ -40,7 +42,10 @@ module {
       h.readSum();
     };
     let fixedDepth = switch fill {
-      case (#zeros({ depth = ?d })) d;
+      case (#zeros({ depth = ?d })) {
+        if (leaves.size() > 2 ** d) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        d;
+      };
       case _ 0;
     };
     let all = List.singleton<[Blob]>(leaves);

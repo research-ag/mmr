@@ -28,6 +28,9 @@ jobs:
       - name: Make sure moc is installed
         run: mops toolchain bin moc
 
+      - name: Make sure pocket-ic is installed (for the tests in test/traps)
+        run: mops toolchain bin pocket-ic
+
       - name: Show versions
         run: |
           mops --version

@@ -272,6 +272,10 @@ module {
   ///
   /// With `checked`, returns `false` if two equal siblings would be combined.
   /// Also `false` if the walk goes beyond height 62. Otherwise `true`.
+  ///
+  /// Traps on a tree padded to a fixed depth d that holds more than 2^d
+  /// leaves: it has no root of that depth. Adding does not check this, so
+  /// that adding costs the same in every format; the trap comes here.
   public func close(self : Peaks, proof : [Blob], checked : Bool) : Bool {
     let hasher = self.hasher;
     let fill = self.fill;
@@ -279,7 +283,11 @@ module {
     let count = self.count;
     let double = self.double;
     let fixedDepth : Nat64 = switch fill {
-      case (#zeros({ depth = ?d })) d.toNat64();
+      case (#zeros({ depth = ?d })) {
+        let depth = d.toNat64();
+        if (count > (1 << depth)) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        depth;
+      };
       case _ 0;
     };
     if (count == 0) {
