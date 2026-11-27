@@ -169,7 +169,7 @@ mops bench
 mops format
 ```
 
-The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, with vectors from an independent implementation, and with known constants of Bitcoin and of Ethereum's consensus layer. A second test file checks the allocation claims.
+The tests compare every tree with a straightforward reference written with the plain `Sha256` digest, over generated leaves and for the zero hashes of SSZ. The tests in `test/allocation/` check the allocation claims.
 
 ## License
 

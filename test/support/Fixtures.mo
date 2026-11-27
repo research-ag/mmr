@@ -2,11 +2,8 @@
 // helpers that build lists, chunks and corrupted copies of them.
 import Array "mo:core/Array";
 import Blob "mo:core/Blob";
-import Char "mo:core/Char";
 import List "mo:core/List";
 import Nat "mo:core/Nat";
-import Nat32 "mo:core/Nat32";
-import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import Sha256 "mo:sha2/Sha256";
 
@@ -38,18 +35,6 @@ module {
     var d = 0;
     while (2 ** d < n) d += 1;
     d;
-  };
-
-  // Decodes a lowercase hexadecimal text into bytes. Traps on anything else.
-  public func hex(t : Text) : Blob {
-    func digit(c : Char) : Nat8 {
-      let n = c.toNat32();
-      if (n >= 48 and n <= 57) return Nat32.toNat8(n - 48);
-      if (n >= 97 and n <= 102) return Nat32.toNat8(n - 87);
-      Runtime.trap("bad hex digit");
-    };
-    let chars = t.toArray();
-    Array.tabulate<Nat8>(chars.size() / 2, func(i) = digit(chars[2 * i]) << 4 | digit(chars[2 * i + 1])).toBlob();
   };
 
   // The end points of a sequence of chunks that covers n leaves, each chunk

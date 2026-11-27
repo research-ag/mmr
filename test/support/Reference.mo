@@ -3,6 +3,8 @@
 // full, so that they share no code and no idea of "peaks" with the package:
 // the package is correct when it agrees with them.
 import Array "mo:core/Array";
+import Blob "mo:core/Blob";
+import Nat "mo:core/Nat";
 import Sha256 "mo:sha2/Sha256";
 import Fixtures "Fixtures";
 
@@ -58,5 +60,12 @@ module {
       level := Array.tabulate<Blob>(below.size() / 2, func(i) = sha(below[2 * i], below[2 * i + 1]));
     };
     level[0];
+  };
+
+  // SSZ's `mix_in_length`: the root and the length combined like two
+  // children, the length as a 32-byte little-endian number.
+  public func withLength(root : Blob, length : Nat) : Blob {
+    let chunk = Array.tabulate<Nat8>(32, func(i) = if (i < 8) ((length / 256 ** i) % 256).toNat8() else 0);
+    sha(root, chunk.toBlob());
   };
 };
