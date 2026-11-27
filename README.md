@@ -181,18 +181,18 @@ Their shapes are therefore part of the package's interface:
 
 ## Performance
 
-Measured with moc 2.2.4 and wasm-opt, in instructions, for random 32-byte leaves:
+Measured with moc 2.2.5 and wasm-opt 133, in instructions, for random 32-byte leaves; the column per leaf is from the 8,000 leaves:
 
 | Operation                                | 1,000 leaves | 8,000 leaves | per leaf |
 | ---------------------------------------- | -----------: | -----------: | -------: |
-| `Bitcoin.merkleRoot`                     |   24,400,000 |  195,000,000 |   24,400 |
-| Bitcoin, `add` leaf by leaf, then `root` |   25,300,000 |  202,100,000 |   25,300 |
-| the same with `addChecked`               |   25,300,000 |  202,500,000 |   25,300 |
-| `Bagged.merkleRoot`                      |   16,100,000 |  128,600,000 |   16,100 |
-| bagged, `add` leaf by leaf, then `root`  |   16,900,000 |  135,700,000 |   17,000 |
-| zero-padded to depth 20, `add`, `root`   |   17,100,000 |  135,800,000 |   17,000 |
-| Bitcoin, verified in 3 chunks            |   25,100,000 |  197,200,000 |   24,600 |
-| bagged, verified in 3 chunks             |   16,500,000 |  130,100,000 |   16,300 |
+| `Bitcoin.merkleRoot`                     |   25,500,000 |  203,800,000 |   25,500 |
+| Bitcoin, `add` leaf by leaf, then `root` |   26,500,000 |  210,700,000 |   26,300 |
+| the same with `addChecked`               |   26,500,000 |  211,200,000 |   26,400 |
+| `Bagged.merkleRoot`                      |   17,400,000 |  139,600,000 |   17,500 |
+| bagged, `add` leaf by leaf, then `root`  |   18,400,000 |  146,600,000 |   18,300 |
+| zero-padded to depth 20, `add`, `root`   |   18,600,000 |  146,700,000 |   18,300 |
+| Bitcoin, verified in 3 chunks            |   26,700,000 |  206,700,000 |   25,800 |
+| bagged, verified in 3 chunks             |   18,400,000 |  142,000,000 |   17,700 |
 
 A double-SHA node is three SHA-256 compressions and a single-SHA node two, and a tree has about one node per leaf.
 Adding in pairs saves about 900 instructions per leaf, because the two leaves are read straight from their Blobs.
