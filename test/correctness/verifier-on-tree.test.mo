@@ -32,6 +32,8 @@ assert ZeroPadded.depthOf(trees[2]) == ?depth and ZeroPadded.depthOf(trees[0]) =
 // The rules of different formats differ, and so do two zero-padded depths.
 assert not Peaks.sameRules(trees[0], trees[1]) and not Peaks.sameRules(trees[1], trees[2]);
 assert not Peaks.sameRules(ZeroPadded.new(3), ZeroPadded.new(4)) and Peaks.sameRules(ZeroPadded.new(4), ZeroPadded.new(4));
+// The same depth with another table is not the same rules either.
+assert not Peaks.sameRules(ZeroPadded.new(4), Peaks.withDepth(4, false, #zeros({ table = Peaks.zeros(4, true); depth = 4 })));
 
 // The capacity is what the slots hold, or for a zero-padded tree no more
 // than its places.
@@ -49,6 +51,17 @@ do {
   assert not v.verifyChunk(ls, []) and v.broken() and wide.count == 0;
   let w = ZeroPadded.verifierOn(Reference.padded(slice(ls, 0, 32), 5), wide);
   assert w.verifyChunk(slice(ls, 0, 32), []) and w.complete();
+};
+
+// The verifier's limit is 2^d for a tree of d + 2 hashers. A tree from
+// `new(5)` has three slots and a capacity of 7, but verifies 4 leaves.
+do {
+  let ls = leaves(5);
+  let t = Bitcoin.new(5);
+  assert t.capacity() == 7;
+  assert not Bitcoin.verifierOn(Reference.bitcoin(ls), t).verifyChunk(ls, []);
+  let four = slice(ls, 0, 4);
+  assert Bitcoin.verifierOn(Reference.bitcoin(four), t).verifyChunk(four, []);
 };
 
 let sizes : [Nat] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 16, 17, 23, 31, 32, 33, 64, 100, 257];

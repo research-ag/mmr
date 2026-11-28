@@ -95,3 +95,12 @@ for (n in sizes.values()) {
     assert not Bagged.verifyInclusion(ls[0], 0, n, [("short" : Blob)], gRoot);
   };
 };
+
+// The depth limit of a branch: 61 levels, so that every index the check
+// takes is within reach. The all-zero tree has the zero roots as its
+// branches: leaf Z_0 at index 0, siblings Z_0 to Z_(d-1), root Z_d.
+do {
+  let z = Peaks.zeros(62, false);
+  assert ZeroPadded.verifyBranch(z[0], 0, slice(z, 0, 61), z[61]);
+  assert not ZeroPadded.verifyBranch(z[0], 0, slice(z, 0, 62), z[62]);
+};

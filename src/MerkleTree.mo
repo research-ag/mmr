@@ -31,10 +31,14 @@ module {
   };
 
   /// The tree over `leaves` (at least one, each 32 bytes), built with the
-  /// given `fill` and single or double SHA-256. Traps if the fill pads to a
-  /// fixed depth d and there are more than 2^d leaves.
+  /// given `fill` and single or double SHA-256. Traps if a leaf is not 32
+  /// bytes long, or if the fill pads to a fixed depth d and there are more
+  /// than 2^d leaves.
   public func build(leaves : [Blob], fill : Peaks.Fill, double : Bool) : MerkleTree {
     assert leaves.size() >= 1;
+    // A leaf that is never combined (a single one, or the last of a level
+    // that moves up as it is) would otherwise go unchecked.
+    for (leaf in leaves.values()) assert leaf.size() == 32;
     let h = Hasher.new();
     func node(left : Blob, right : Blob) : Blob {
       h.combineBlob32(left, right);
@@ -79,9 +83,10 @@ module {
 
   /// The proof for the first `m` leaves (0 <= m <= n): the PEAKS TO THE RIGHT
   /// of leaf m - 1, lowest first. These are the right siblings of that leaf's
-  /// ancestors, as far as they cover real leaves. The root alone for m = 0,
-  /// empty for m = n. This is what `Peaks.close` and `Chunks.verifyChunk`
-  /// take as `proof`.
+  /// ancestors, as far as they cover real leaves; empty for m = n. This is
+  /// what `Peaks.close` and `Chunks.verifyChunk` take as `proof`, for m >= 1:
+  /// they work on a tree that holds at least one leaf. For m = 0 it is the
+  /// root alone, the whole tree to the right of nothing.
   public func rightPeaks(self : MerkleTree, m : Nat) : [Blob] {
     let levels = self.levels;
     assert m <= levels[0].size();

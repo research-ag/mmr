@@ -10,3 +10,5 @@ The shapes of the record types that a canister can store (`Peaks.Tree`, `Chunks.
   - `Chunks`: verification of a list against a known root, chunk by chunk, on a tree that takes its rules from the tree (`onTree`); the presets make one (`verifier`) or take the caller's (`verifierOn`). A rejected chunk makes the verifier fail.
   - `MerkleTree`: the whole tree with its rules, and the proofs computed from it (`branch`, `rightPeaks`).
   - A tree padded to depth d that holds more than 2^d leaves has no root: `Peaks.close` (and so `root`) and `MerkleTree.build` trap on it. Its `capacity` is 2^d, so `load` and the chunk verifier refuse more leaves without a trap.
+  - The padding depth is at most 62: `Peaks.new` and `withDepth` trap on a deeper `#zeros` fill, or one whose table is too short, and `close` on a record made by hand with one.
+  - A chunk verifier on a tree of d + 2 hashers takes up to 2^d leaves: make its tree with `withDepth(d)`.

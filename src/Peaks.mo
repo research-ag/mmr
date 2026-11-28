@@ -9,8 +9,8 @@
 /// SINGLE (one SHA-256 per node) or DOUBLE (SHA-256 twice, as in Bitcoin),
 /// and has a `Fill`, the rule for a node without a right sibling. These two
 /// rules are what tells the tree formats apart, and a tree keeps both in its
-/// record: the presets are only constructors that choose them. Nothing in this module allocates, except where a `Blob` or an array is
-/// returned.
+/// record: the presets are only constructors that choose them. Nothing in
+/// this module allocates, except where a `Blob` or an array is returned.
 ///
 /// === The structure ===
 ///
@@ -75,8 +75,8 @@ module {
   ///   - `#copy`: the node itself. Bitcoin's rule for an odd last node.
   ///   - `#zeros`: the root of an all-zero subtree of the same height, taken
   ///     from `table` (see `zeros`). The tree is padded to exactly 2^depth
-  ///     leaves, and `table` needs depth + 1 entries. SSZ and BitTorrent v2
-  ///     work this way.
+  ///     leaves, with a depth of at most 62, and `table` needs depth + 1
+  ///     entries. SSZ and BitTorrent v2 work this way.
   public type Fill = {
     #skip;
     #copy;
@@ -85,7 +85,8 @@ module {
 
   /// An empty tree with room for at least `maxLeaves` leaves. Allocates
   /// `floor(log2 maxLeaves) + 2` hashers: one slot per bit of the count, and
-  /// the spare.
+  /// the spare. For a chunk verifier, make the tree with `withDepth`: on a
+  /// tree from `new` it takes fewer leaves (see `Chunks.onTree`).
   public func new(maxLeaves : Nat, double : Bool, fill : Fill) : Tree {
     assert maxLeaves >= 1;
     // floor(log2 maxLeaves), from the leading zeros. Not by doubling a `Nat`:
@@ -94,9 +95,14 @@ module {
   };
 
   /// An empty tree with room for 2^depth leaves (depth at most 61): slots 0
-  /// to depth, and the spare.
+  /// to depth, and the spare. Traps on a `#zeros` fill of a depth beyond 62
+  /// or with fewer than depth + 1 entries in its table.
   public func withDepth(depth : Nat, double : Bool, fill : Fill) : Tree {
     assert depth <= 61;
+    switch fill {
+      case (#zeros(z)) assert z.depth <= 62 and z.table.size() > z.depth;
+      case _ {};
+    };
     {
       hasher = VarArray.tabulate<Hasher.Hasher>(depth + 2, func(_) { Hasher.new() });
       double;
@@ -285,11 +291,14 @@ module {
   /// against a known root.
   ///
   /// With `checked`, returns `false` if two equal siblings would be combined.
-  /// Also `false` if the walk goes beyond height 62. Otherwise `true`.
+  /// Also `false` if the walk would go above height 62, which only a proof
+  /// that is too long makes it do. Otherwise `true`.
   ///
   /// Traps on a tree padded to a fixed depth d that holds more than 2^d
   /// leaves: it has no root of that depth. Adding does not check this, so
-  /// that adding costs the same in every format; the trap comes here.
+  /// that adding costs the same in every format; the trap comes here. Traps
+  /// as well on a depth beyond 62, which `new` and `withDepth` refuse but a
+  /// record made by hand can have.
   public func close(self : Tree, proof : [Blob], checked : Bool) : Bool {
     let hasher = self.hasher;
     let fill = self.fill;
@@ -298,6 +307,7 @@ module {
     let double = self.double;
     let fixedDepth : Nat64 = switch fill {
       case (#zeros({ depth })) {
+        if (depth > 62) Runtime.trap("mmr: a zero-padded tree deeper than 62");
         let d = depth.toNat64();
         if (count > (1 << d)) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
         d;
@@ -386,10 +396,12 @@ module {
   /// is at position `index` of a tree of depth `branch.size()` with root
   /// `root`, built with single or double SHA-256. This is the check of
   /// `Bitcoin.verifyBranch` and `ZeroPadded.verifyBranch`. The index must lie
-  /// within that depth. A malformed branch gives `false`. Allocates one
-  /// hasher.
+  /// within that depth, and the depth is at most 61. A malformed branch
+  /// gives `false`. Allocates one hasher.
   public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob, double : Bool) : Bool {
-    if (leaf.size() != 32 or branch.size() > 62) return false;
+    // 61 levels: every index below 2^61 is then within reach of the bound
+    // on the index below.
+    if (leaf.size() != 32 or branch.size() > 61) return false;
     var j = 0;
     while (j < branch.size()) {
       if (branch[j].size() != 32) return false;
@@ -409,13 +421,13 @@ module {
   // ---------------------------------------------------------------------------
 
   /// Whether two trees have the same rules: the same hashing and the same
-  /// fill (for zero padding, the same depth).
+  /// fill (for zero padding, the same depth and the same table).
   public func sameRules(a : Tree, b : Tree) : Bool {
     if (a.double != b.double) return false;
     switch (a.fill, b.fill) {
       case (#skip, #skip) true;
       case (#copy, #copy) true;
-      case (#zeros(x), #zeros(y)) x.depth == y.depth;
+      case (#zeros(x), #zeros(y)) x.depth == y.depth and x.table == y.table;
       case _ false;
     };
   };

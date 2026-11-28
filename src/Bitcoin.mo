@@ -84,11 +84,11 @@ module {
   /// Verify a MERKLE BRANCH: that `txid` is the transaction at position
   /// `index` of a block with Merkle root `root`. `branch` holds one sibling
   /// hash per level, lowest first, with the duplicate written out where
-  /// Bitcoin pairs a node with itself. That is what `MerkleTree.branch`
-  /// gives for a Bitcoin tree, and what Stratum sends for the coinbase (index 0). It is
-  /// not the `merkleblock` of `gettxoutproof`, a partial tree with flag bits
-  /// that has to be decoded first. A malformed branch gives `false`.
-  /// See the note on leaves and inner nodes above.
+  /// Bitcoin pairs a node with itself, and at most 61 levels. That is what
+  /// `MerkleTree.branch` gives for a Bitcoin tree, and what Stratum sends for
+  /// the coinbase (index 0). It is not the `merkleblock` of `gettxoutproof`,
+  /// a partial tree with flag bits that has to be decoded first. A malformed
+  /// branch gives `false`. See the note on leaves and inner nodes above.
   public func verifyBranch(txid : Blob, index : Nat, branch : [Blob], root : Blob) : Bool =
     Peaks.verifyBranch(txid, index, branch, root, true);
 
@@ -98,12 +98,13 @@ module {
   /// lists are rejected. See `Chunks`.
   public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.onTree(root, withDepth(maxDepth), true);
 
-  /// The same verifier on a tree that the caller owns: the
-  /// tree is emptied, nothing is allocated but the verifier's record, and a
-  /// rejected chunk fails the verifier (see `Chunks.onTree`). For a canister
-  /// that traps on a rejected chunk and keeps one tree for all its blocks. A
-  /// tree made by `withDepth(d)` verifies up to 2^d transactions. Traps if
-  /// the tree does not have Bitcoin's rules (`isBitcoin`).
+  /// The same verifier on a tree that the caller owns: the tree is emptied,
+  /// nothing is allocated but the verifier's record, and a rejected chunk
+  /// fails the verifier (see `Chunks.onTree`). For a canister that traps on
+  /// a rejected chunk and keeps one tree for all its blocks. A tree made by
+  /// `withDepth(d)` verifies up to 2^d transactions; make it with
+  /// `withDepth`, as one made by `new` takes fewer than its capacity. Traps
+  /// if the tree does not have Bitcoin's rules (`isBitcoin`).
   public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert isBitcoin(tree);
     Chunks.onTree(root, tree, true);

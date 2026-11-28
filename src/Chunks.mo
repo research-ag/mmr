@@ -70,10 +70,15 @@ module {
   /// A verifier for the tree with root `root` (32 bytes), on `tree`. The tree
   /// is emptied (its count set to 0; what its hashers hold does not matter),
   /// and its rules, `double` and `fill`, are the verifier's. With `checked`,
-  /// a chunk that would combine two equal siblings is rejected. A tree made
-  /// by `Peaks.withDepth(d, ...)` verifies up to 2^d leaves, and a
-  /// zero-padded one no more than its places. Only one verifier may use a
-  /// tree at a time, and the caller must not touch it meanwhile.
+  /// a chunk that would combine two equal siblings is rejected.
+  ///
+  /// A tree of d + 2 hashers verifies up to 2^d leaves, with proofs of up to
+  /// d peaks, and a zero-padded one no more than its places. That is 2^d for
+  /// a tree made by `withDepth(d, ...)`, but for one made by
+  /// `Peaks.new(maxLeaves, ...)` only the largest power of two up to
+  /// `maxLeaves`, which is less than `maxLeaves` unless that is a power of
+  /// two: make the tree with `withDepth` for a verifier. Only one verifier
+  /// may use a tree at a time, and the caller must not touch it meanwhile.
   ///
   /// The presets have a `verifier` function that makes a tree with their
   /// rules for it, and a `verifierOn` function for a tree of the caller's.
@@ -122,8 +127,9 @@ module {
   public func verifyChunk(self : Verifier, leaves : [Blob], next : [Blob]) : Bool {
     if (self.done or self.failed) return false;
     let tree = self.tree;
-    // A tree of 2^maxDepth leaves is the most there is room for, and its
-    // proofs have at most one peak per level. A longer proof is not walked.
+    // The verifier takes trees of up to 2^maxDepth leaves (see `onTree`),
+    // whose proofs have at most one peak per level. A longer proof is not
+    // walked.
     let maxDepth = tree.hasher.size() - 2 : Nat;
     // At most 2^maxDepth leaves, and no more than the tree holds with a root
     // (fewer for a zero-padded tree of a smaller depth).

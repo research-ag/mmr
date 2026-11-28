@@ -43,7 +43,9 @@ module {
   public func new(depth : Nat) : Peaks.Tree = Peaks.withDepth(depth, false, fillOf(depth));
 
   /// The depth of a zero-padded tree, or `null` if `tree` is not one (single
-  /// SHA-256, padded with zeros to a fixed depth).
+  /// SHA-256, padded to a fixed depth). The table is not compared with
+  /// `Peaks.zeros`, which would allocate; a tree from `new` has the right
+  /// one.
   public func depthOf(tree : Peaks.Tree) : ?Nat {
     if (tree.double) return null;
     switch (tree.fill) {
@@ -97,8 +99,8 @@ module {
 
   /// Verify a MERKLE BRANCH: that `leaf` is the chunk at position `index` of
   /// a tree with root `root`. `branch` holds one sibling per level, lowest
-  /// first, so its length is the depth: SSZ's `is_valid_merkle_branch`. A
-  /// malformed branch gives `false`.
+  /// first, so its length is the depth (at most 61): SSZ's
+  /// `is_valid_merkle_branch`. A malformed branch gives `false`.
   public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob) : Bool =
     Peaks.verifyBranch(leaf, index, branch, root, false);
 
@@ -109,10 +111,10 @@ module {
   public func verifier(root : Blob, depth : Nat) : Chunks.Verifier = Chunks.onTree(root, new(depth), false);
 
   /// The same verifier on a tree that the caller owns (from `new`): the
-  /// tree is emptied, nothing is allocated but the verifier's
-  /// record, and a rejected chunk fails the verifier (see `Chunks.onTree`).
-  /// The depth and the table of zero subtrees are the tree's own. Traps if
-  /// the tree is not zero-padded (`depthOf`).
+  /// tree is emptied, nothing is allocated but the verifier's record, and a
+  /// rejected chunk fails the verifier (see `Chunks.onTree`). The depth and
+  /// the table of zero subtrees are the tree's own. Traps if the tree is not
+  /// zero-padded (`depthOf`).
   public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert depthOf(tree) != null;
     Chunks.onTree(root, tree, false);

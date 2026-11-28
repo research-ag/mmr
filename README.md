@@ -132,11 +132,11 @@ if (verifier.complete()) { /* that was the last chunk */ };
 
 The proof that goes with a chunk is the list of peaks to the right of the chunk's last leaf; the last chunk has an empty one.
 The uploader computes them from the whole tree, with `MerkleTree.rightPeaks`: `Bitcoin.merkleTree(txids).rightPeaks(m)` for a chunk that ends before leaf `m`.
-A rejected chunk makes the verifier `failed`: it accepts nothing more. Verification allocates nothing.
+A rejected chunk fails the verifier (`broken()` is then `true`): it accepts nothing more. Verification allocates nothing.
 
 Each chunk costs its leaves plus one hash per level of the tree, so this suits a few large chunks better than many small ones.
 
-A canister that traps on a rejected chunk can keep a single tree for all its uploads:
+A canister that traps on a rejected chunk can keep a single tree for all its uploads. Make it with `withDepth`: a tree of depth d verifies up to 2^d leaves, while one from `new(n)` verifies only the largest power of two up to n.
 
 ```motoko
 let tree = Bitcoin.withDepth(14); // once: at most 2^14 transactions

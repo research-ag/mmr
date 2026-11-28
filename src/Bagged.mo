@@ -53,9 +53,9 @@ module {
   /// Verify an INCLUSION PROOF: that `leaf` is the leaf at position `index`
   /// of the tree of `size` leaves with root `root`. `path` holds the siblings
   /// of the leaf's ancestors, lowest first, with the levels left out at which
-  /// a node has no sibling (`MerkleTree.branch` of a bagged tree). The algorithm is
-  /// that of RFC 9162, section 2.1.3.2, without the prefix bytes. A malformed
-  /// proof gives `false`.
+  /// a node has no sibling (`MerkleTree.branch` of a bagged tree). The
+  /// algorithm is that of RFC 9162, section 2.1.3.2, without the prefix
+  /// bytes. `size` is at most 2^61 - 1. A malformed proof gives `false`.
   public func verifyInclusion(leaf : Blob, index : Nat, size : Nat, path : [Blob], root : Blob) : Bool {
     // 2^61 - 1 is the largest bound that compares without allocating.
     if (leaf.size() != 32 or index >= size or size > 2305843009213693951) return false;
@@ -89,11 +89,12 @@ module {
   /// and the note above: the root does not say how many leaves there are.
   public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.onTree(root, withDepth(maxDepth), false);
 
-  /// The same verifier on a tree that the caller owns: the
-  /// tree is emptied, nothing is allocated but the verifier's record, and a
-  /// rejected chunk fails the verifier (see `Chunks.onTree`). A tree made by
-  /// `withDepth(d)` verifies up to 2^d leaves. Traps if the tree does not
-  /// have the bagged rules (`isBagged`).
+  /// The same verifier on a tree that the caller owns: the tree is emptied,
+  /// nothing is allocated but the verifier's record, and a rejected chunk
+  /// fails the verifier (see `Chunks.onTree`). A tree made by `withDepth(d)`
+  /// verifies up to 2^d leaves; make it with `withDepth`, as one made by
+  /// `new` takes fewer than its capacity. Traps if the tree does not have
+  /// the bagged rules (`isBagged`).
   public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
     assert isBagged(tree);
     Chunks.onTree(root, tree, false);
