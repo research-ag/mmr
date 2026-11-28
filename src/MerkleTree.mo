@@ -47,7 +47,7 @@ module {
     };
     let fixedDepth = switch fill {
       case (#zeros({ depth })) {
-        if (leaves.size() > 2 ** depth) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        if (leaves.size() > 2 ** depth) Runtime.trap("merkle: more leaves than the 2^depth places of a zero-padded tree");
         depth;
       };
       case _ 0;

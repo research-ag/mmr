@@ -155,7 +155,7 @@ module {
     };
     // The node rests in slot k, and the hasher that was there is the spare.
     let kk = k.toNat();
-    if (kk >= top) Runtime.trap("mmr: capacity exceeded");
+    if (kk >= top) Runtime.trap("merkle: capacity exceeded");
     hasher[top] := hasher[kk];
     hasher[kk] := node;
     self.count := count + (1 << height);
@@ -180,7 +180,7 @@ module {
       k += 1;
     };
     let kk = k.toNat();
-    if (kk >= top) Runtime.trap("mmr: capacity exceeded");
+    if (kk >= top) Runtime.trap("merkle: capacity exceeded");
     hasher[top] := hasher[kk];
     hasher[kk] := node;
     self.count := count + (1 << height);
@@ -307,9 +307,9 @@ module {
     let double = self.double;
     let fixedDepth : Nat64 = switch fill {
       case (#zeros({ depth })) {
-        if (depth > 62) Runtime.trap("mmr: a zero-padded tree deeper than 62");
+        if (depth > 62) Runtime.trap("merkle: a zero-padded tree deeper than 62");
         let d = depth.toNat64();
-        if (count > (1 << d)) Runtime.trap("mmr: more leaves than the 2^depth places of a zero-padded tree");
+        if (count > (1 << d)) Runtime.trap("merkle: more leaves than the 2^depth places of a zero-padded tree");
         d;
       };
       case _ 0;
@@ -321,7 +321,7 @@ module {
           acc.loadBlob32(table[depth]);
           return proof.size() == 0;
         };
-        case _ Runtime.trap("mmr: an empty tree has no root");
+        case _ Runtime.trap("merkle: an empty tree has no root");
       };
     };
     // The lowest peak is a left child. Copy it, so that the peaks stay as

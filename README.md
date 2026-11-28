@@ -1,6 +1,6 @@
-# mmr
+# merkle
 
-Merkle mountain ranges over SHA-256 for Motoko: append-only Merkle trees that keep only their peaks, with roots, inclusion proofs and chunked verification, and no heap allocation while hashing.
+SHA-256 Merkle trees for Motoko: the roots of Bitcoin's, bagged and zero-padded trees, inclusion proofs and chunked verification, with no heap allocation while hashing. The trees are built as Merkle mountain ranges, which keep only their peaks.
 
 The package is built on the `Hasher` of [`sha2`](https://mops.one/sha2), which combines two 32-byte hashes without allocating.
 A tree of n leaves is held as at most log2(n) + 2 hashers, whatever n is.
@@ -52,7 +52,7 @@ It also shapes the inclusion proofs: Bitcoin's and zero-padded branches have one
 ## Install
 
 ```bash
-mops add mmr
+mops add merkle
 ```
 
 ## The presets
@@ -63,9 +63,9 @@ A preset makes trees with its format's rules, and has the functions particular t
 The tree itself is a `Peaks.Tree`, whatever the format, and is used with the functions of `Peaks`, so that module is imported as well.
 
 ```motoko
-import Bitcoin "mo:mmr/Bitcoin";
-import MerkleTree "mo:mmr/MerkleTree";
-import Peaks "mo:mmr/Peaks";
+import Bitcoin "mo:merkle/Bitcoin";
+import MerkleTree "mo:merkle/MerkleTree";
+import Peaks "mo:merkle/Peaks";
 
 // In one shot. Traps on a mutated list (see below).
 let root = Bitcoin.merkleRoot(txids);
@@ -85,9 +85,9 @@ Txids and roots are in Bitcoin's internal byte order, the reverse of what block 
 ### Bagged
 
 ```motoko
-import Bagged "mo:mmr/Bagged";
-import MerkleTree "mo:mmr/MerkleTree";
-import Peaks "mo:mmr/Peaks";
+import Bagged "mo:merkle/Bagged";
+import MerkleTree "mo:merkle/MerkleTree";
+import Peaks "mo:merkle/Peaks";
 import Sha256 "mo:sha2/Sha256";
 
 let tree = Bagged.new(1_000_000);
@@ -102,9 +102,9 @@ let ok = Bagged.verifyInclusion(leaf, index, size, path, root);
 ### Zero-padded
 
 ```motoko
-import ZeroPadded "mo:mmr/ZeroPadded";
-import MerkleTree "mo:mmr/MerkleTree";
-import Peaks "mo:mmr/Peaks";
+import ZeroPadded "mo:merkle/ZeroPadded";
+import MerkleTree "mo:merkle/MerkleTree";
+import Peaks "mo:merkle/Peaks";
 
 let tree = ZeroPadded.new(32); // 2^32 places, as the deposit contract
 for (chunk in chunks.values()) tree.add(chunk);
@@ -120,8 +120,8 @@ let ok = ZeroPadded.verifyBranch(leaf, index, branch, root); // is_valid_merkle_
 A canister that receives a long list in several calls can check each chunk when it arrives, against nothing but the root, and reject a bad chunk at once.
 
 ```motoko
-import Bitcoin "mo:mmr/Bitcoin";
-import Chunks "mo:mmr/Chunks";
+import Bitcoin "mo:merkle/Bitcoin";
+import Chunks "mo:merkle/Chunks";
 
 let verifier = Bitcoin.verifier(root, 14); // at most 2^14 transactions
 

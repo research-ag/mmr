@@ -75,7 +75,7 @@ module {
       assert txids[0].size() == 32;
       return txids[0];
     };
-    if (mutated(txids)) Runtime.trap("mmr: mutated transaction list (CVE-2012-2459)");
+    if (mutated(txids)) Runtime.trap("merkle: mutated transaction list (CVE-2012-2459)");
     let tree = new(n);
     ignore tree.addAll(txids, 0, n, false);
     tree.root();
