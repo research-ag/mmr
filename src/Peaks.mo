@@ -1,14 +1,16 @@
 /// The core of the package: a Merkle mountain range as an array of peaks with
 /// a counter, and the few operations that every Merkle tree built from it
-/// shares. The presets (`Bitcoin`, `Bagged`, `Ssz`) and the chunk verifier
+/// shares. The presets (`Bitcoin`, `Bagged`, `ZeroPadded`) and the chunk verifier
 /// (`Chunks`) are thin layers over this module; use it directly to build a
 /// tree format of your own.
 ///
 /// Everything here hashes with SHA-256 and combines two 32-byte hashes as one
 /// 64-byte message, `H(left ++ right)`, with no prefix. A tree is either
-/// SINGLE (one SHA-256 per node) or DOUBLE (SHA-256 twice, as in Bitcoin).
-/// Nothing in this module allocates, except where a `Blob` or an array is
-/// returned.
+/// SINGLE (one SHA-256 per node) or DOUBLE (SHA-256 twice, as in Bitcoin),
+/// and has a `Fill`, the rule for a node without a right sibling. These two
+/// rules are what tells the tree formats apart, and a tree keeps both in its
+/// record: the presets are only constructors that choose them. Nothing in
+/// this module allocates, except where a `Blob` or an array is returned.
 ///
 /// === The structure ===
 ///
@@ -30,14 +32,15 @@
 ///   - `close` computes a root from the peaks without changing them. It walks
 ///     up from the lowest peak: where the count has a 1-bit it combines with
 ///     the peak on the LEFT; elsewhere something has to stand on the RIGHT,
-///     and what that is distinguishes the tree formats (`Fill`). With a list
+///     and what that is is the tree's `Fill`. With a list
 ///     of peaks for the right-hand side, the same walk verifies a prefix of a
 ///     tree against its root.
 ///
-///   - `foldBranch` folds one node up a list of siblings: the verification of
-///     an inclusion proof.
+///   - `foldBranch` folds one node up a list of siblings, and `verifyBranch`
+///     checks an inclusion proof with it.
 ///
-///   - `copy`, `toBlobs` and `load` save, export and restore the peaks.
+///   - `copy`, `toBlobs` and `load` save, export and restore the peaks,
+///     between trees of the same rules (`sameRules`).
 
 import Hasher "mo:sha2/Hasher/Sha256";
 import Sha256 "mo:sha2/Sha256";
@@ -48,13 +51,17 @@ import Runtime "mo:core/Runtime";
 import VarArray "mo:core/VarArray";
 
 module {
-  /// The peaks of a tree. Slot k of `hasher` holds the peak of height k
-  /// exactly when bit k of `count` is set; the last slot is the spare.
-  /// `double` selects double SHA-256 per node. A static record that can be
-  /// declared `stable`; its shape is part of the package's interface.
-  public type Peaks = {
+  /// A tree: its peaks, its leaf count and its rules. Slot k of `hasher`
+  /// holds the peak of height k exactly when bit k of `count` is set; the
+  /// last slot is the spare. `double` selects double SHA-256 per node, and
+  /// `fill` the rule for a node without a right sibling when a root is
+  /// computed. Every preset makes trees of this type. A static record
+  /// that can be declared `stable`; its shape is part of the package's
+  /// interface.
+  public type Tree = {
     hasher : [var Hasher.Hasher];
     double : Bool;
+    fill : Fill;
     var count : Nat64;
   };
 
@@ -67,44 +74,62 @@ module {
   ///     OpenTimestamps.
   ///   - `#copy`: the node itself. Bitcoin's rule for an odd last node.
   ///   - `#zeros`: the root of an all-zero subtree of the same height, taken
-  ///     from `table` (see `zeros`). With `depth = ?d` the tree is padded to
-  ///     exactly 2^d leaves, and `table` needs d + 1 entries; with `null` to
-  ///     the smallest power of two that holds the leaves. SSZ and BitTorrent
-  ///     v2 work this way.
+  ///     from `table` (see `zeros`). The tree is padded to exactly 2^depth
+  ///     leaves, with a depth of at most 62, and `table` needs depth + 1
+  ///     entries. SSZ and BitTorrent v2 work this way.
   public type Fill = {
     #skip;
     #copy;
-    #zeros : { table : [Blob]; depth : ?Nat };
+    #zeros : { table : [Blob]; depth : Nat };
   };
 
   /// An empty tree with room for at least `maxLeaves` leaves. Allocates
   /// `floor(log2 maxLeaves) + 2` hashers: one slot per bit of the count, and
-  /// the spare.
-  public func new(maxLeaves : Nat, double : Bool) : Peaks {
+  /// the spare. For a chunk verifier, make the tree with `withDepth`: on a
+  /// tree from `new` it takes fewer leaves (see `Chunks.onTree`).
+  public func new(maxLeaves : Nat, double : Bool, fill : Fill) : Tree {
     assert maxLeaves >= 1;
     // floor(log2 maxLeaves), from the leading zeros. Not by doubling a `Nat`:
     // its multiplication allocates once the product passes 2^31.
-    withDepth((63 - Nat64.bitcountLeadingZero(maxLeaves.toNat64())).toNat(), double);
+    withDepth((63 - Nat64.bitcountLeadingZero(maxLeaves.toNat64())).toNat(), double, fill);
   };
 
   /// An empty tree with room for 2^depth leaves (depth at most 61): slots 0
-  /// to depth, and the spare.
-  public func withDepth(depth : Nat, double : Bool) : Peaks {
+  /// to depth, and the spare. Traps on a `#zeros` fill of a depth beyond 62
+  /// or with fewer than depth + 1 entries in its table.
+  public func withDepth(depth : Nat, double : Bool, fill : Fill) : Tree {
     assert depth <= 61;
+    switch fill {
+      case (#zeros(z)) assert z.depth <= 62 and z.table.size() > z.depth;
+      case _ {};
+    };
     {
       hasher = VarArray.tabulate<Hasher.Hasher>(depth + 2, func(_) { Hasher.new() });
       double;
+      fill;
       var count = 0;
     };
   };
 
-  /// The largest number of leaves the tree can hold: one less than a power of
-  /// two, since every slot can be occupied at once.
-  public func capacity(self : Peaks) : Nat64 = (1 << (self.hasher.size() - 1 : Nat).toNat64()) - 1;
+  /// The largest number of leaves the tree can hold and still have a root.
+  /// The slots hold one less than a power of two, since every slot can be
+  /// occupied at once. A tree padded to depth d has a root for at most 2^d
+  /// leaves, so its capacity is the smaller of the two.
+  public func capacity(self : Tree) : Nat64 {
+    let slots : Nat64 = (1 << (self.hasher.size() - 1 : Nat).toNat64()) - 1;
+    switch (self.fill) {
+      case (#zeros({ depth })) {
+        if (depth >= 62) return slots; // more places than slots can ever hold
+        let places : Nat64 = 1 << depth.toNat64();
+        if (places < slots) places else slots;
+      };
+      case _ slots;
+    };
+  };
 
   /// The spare hasher. The adapters below put a node here before `carry`, and
   /// `close` leaves its result here.
-  public func spare(self : Peaks) : Hasher.Hasher = self.hasher[self.hasher.size() - 1];
+  public func spare(self : Tree) : Hasher.Hasher = self.hasher[self.hasher.size() - 1];
 
   // ---------------------------------------------------------------------------
   // Adding
@@ -112,9 +137,10 @@ module {
 
   /// Insert the node in the spare as a peak of height `height`, merging upward
   /// while the count has a 1-bit: `count` grows by 2^height. The low `height`
-  /// bits of the count must be zero, so that the node is aligned. Traps if the
-  /// capacity is exceeded.
-  public func carry(self : Peaks, height : Nat64) {
+  /// bits of the count must be zero, so that the node is aligned. Traps if
+  /// the slots are full. (A zero-padded tree is not stopped at its places
+  /// here; `close` traps on it.)
+  public func carry(self : Tree, height : Nat64) {
     let hasher = self.hasher;
     let top = hasher.size() - 1 : Nat;
     let node = hasher[top];
@@ -129,7 +155,7 @@ module {
     };
     // The node rests in slot k, and the hasher that was there is the spare.
     let kk = k.toNat();
-    if (kk >= top) Runtime.trap("mmr: capacity exceeded");
+    if (kk >= top) Runtime.trap("merkle: capacity exceeded");
     hasher[top] := hasher[kk];
     hasher[kk] := node;
     self.count := count + (1 << height);
@@ -138,7 +164,7 @@ module {
   /// `carry` with a check for EQUAL SIBLINGS: returns `false`, and leaves the
   /// tree as it was, if the node would be merged with a peak that hashes
   /// alike. A valid Bitcoin block never has such a pair (see `Bitcoin`).
-  public func carryChecked(self : Peaks, height : Nat64) : Bool {
+  public func carryChecked(self : Tree, height : Nat64) : Bool {
     let hasher = self.hasher;
     let top = hasher.size() - 1 : Nat;
     let node = hasher[top];
@@ -154,7 +180,7 @@ module {
       k += 1;
     };
     let kk = k.toNat();
-    if (kk >= top) Runtime.trap("mmr: capacity exceeded");
+    if (kk >= top) Runtime.trap("merkle: capacity exceeded");
     hasher[top] := hasher[kk];
     hasher[kk] := node;
     self.count := count + (1 << height);
@@ -162,20 +188,20 @@ module {
   };
 
   /// Add a leaf, a 32-byte `Blob`. Traps if it is not 32 bytes long.
-  public func add(self : Peaks, leaf : Blob) {
+  public func add(self : Tree, leaf : Blob) {
     spare(self).loadBlob32(leaf);
     carry(self, 0);
   };
 
   /// `add` with the check for equal siblings (see `carryChecked`).
-  public func addChecked(self : Peaks, leaf : Blob) : Bool {
+  public func addChecked(self : Tree, leaf : Blob) : Bool {
     spare(self).loadBlob32(leaf);
     carryChecked(self, 0);
   };
 
   /// Add two leaves at once. They are fused straight from their Blobs, which
   /// is cheaper than adding them one by one. The count must be even.
-  public func addPair(self : Peaks, left : Blob, right : Blob) {
+  public func addPair(self : Tree, left : Blob, right : Blob) {
     let node = spare(self);
     node.combineBlob32(left, right);
     if (self.double) node.hashState(node);
@@ -183,7 +209,7 @@ module {
   };
 
   /// `addPair` with the check for equal siblings, the two leaves included.
-  public func addPairChecked(self : Peaks, left : Blob, right : Blob) : Bool {
+  public func addPairChecked(self : Tree, left : Blob, right : Blob) : Bool {
     if (left == right) return false;
     let node = spare(self);
     node.combineBlob32(left, right);
@@ -199,7 +225,7 @@ module {
   ///
   /// With `checked`, returns `false` as soon as two equal siblings would be
   /// combined; the leaves before them stay added. Otherwise `true`.
-  public func addAll(self : Peaks, leaves : [Blob], from : Nat, to : Nat, checked : Bool) : Bool {
+  public func addAll(self : Tree, leaves : [Blob], from : Nat, to : Nat, checked : Bool) : Bool {
     assert from <= to and to <= leaves.size();
     var i = from;
     if (checked) {
@@ -227,7 +253,7 @@ module {
   };
 
   /// Add a leaf that is held in a `Hasher`. The hasher is only read.
-  public func addState(self : Peaks, leaf : Hasher.Hasher) {
+  public func addState(self : Tree, leaf : Hasher.Hasher) {
     spare(self).loadState(leaf);
     carry(self, 0);
   };
@@ -236,7 +262,7 @@ module {
   /// message in a single tree, SHA-256 twice in a double one. `digest` is a
   /// SHA-256 `Digest` to work in; it is reset first, so one can serve all
   /// leaves. No `Blob` is made of the hash.
-  public func addMessage(self : Peaks, digest : Sha256.Digest, message : Blob) {
+  public func addMessage(self : Tree, digest : Sha256.Digest, message : Blob) {
     digest.reset();
     digest.writeBlob(message);
     digest.close();
@@ -257,7 +283,7 @@ module {
   ///
   ///   - the peak of the tree on its LEFT, where the count has a 1-bit,
   ///   - else the next entry of `proof` on its RIGHT,
-  ///   - else what `fill` says.
+  ///   - else what the tree's `fill` says.
   ///
   /// With an empty `proof` this is the root of the tree. With the peaks to
   /// the right of the tree's last leaf as `proof`, lowest first, it is the
@@ -265,24 +291,37 @@ module {
   /// against a known root.
   ///
   /// With `checked`, returns `false` if two equal siblings would be combined.
-  /// Also `false` if the walk goes beyond height 62. Otherwise `true`.
-  public func close(self : Peaks, proof : [Blob], fill : Fill, checked : Bool) : Bool {
+  /// Also `false` if the walk would go above height 62, which only a proof
+  /// that is too long makes it do. Otherwise `true`.
+  ///
+  /// Traps on a tree padded to a fixed depth d that holds more than 2^d
+  /// leaves: it has no root of that depth. Adding does not check this, so
+  /// that adding costs the same in every format; the trap comes here. Traps
+  /// as well on a depth beyond 62, which `new` and `withDepth` refuse but a
+  /// record made by hand can have.
+  public func close(self : Tree, proof : [Blob], checked : Bool) : Bool {
     let hasher = self.hasher;
+    let fill = self.fill;
     let acc = hasher[hasher.size() - 1];
     let count = self.count;
     let double = self.double;
     let fixedDepth : Nat64 = switch fill {
-      case (#zeros({ depth = ?d })) d.toNat64();
+      case (#zeros({ depth })) {
+        if (depth > 62) Runtime.trap("merkle: a zero-padded tree deeper than 62");
+        let d = depth.toNat64();
+        if (count > (1 << d)) Runtime.trap("merkle: more leaves than the 2^depth places of a zero-padded tree");
+        d;
+      };
       case _ 0;
     };
     if (count == 0) {
-      // Only a tree padded to a fixed depth has a root without leaves.
+      // Only a zero-padded tree has a root without leaves.
       switch fill {
-        case (#zeros({ table; depth = ?d })) {
-          acc.loadBlob32(table[d]);
+        case (#zeros({ table; depth })) {
+          acc.loadBlob32(table[depth]);
           return proof.size() == 0;
         };
-        case _ Runtime.trap("mmr: an empty tree has no root");
+        case _ Runtime.trap("merkle: an empty tree has no root");
       };
     };
     // The lowest peak is a left child. Copy it, so that the peaks stay as
@@ -321,10 +360,10 @@ module {
     true;
   };
 
-  /// The root of the tree under the given `fill`, as a `Blob`. The tree is
-  /// left unchanged: keep adding leaves and take the root again.
-  public func root(self : Peaks, fill : Fill) : Blob {
-    ignore close(self, [], fill, false);
+  /// The root of the tree, as a `Blob`. The tree is left unchanged: keep
+  /// adding leaves and take the root again.
+  public func root(self : Tree) : Blob {
+    ignore close(self, [], false);
     spare(self).readSum();
   };
 
@@ -353,14 +392,51 @@ module {
     };
   };
 
+  /// Verify a branch with one sibling per level, lowest first: that `leaf`
+  /// is at position `index` of a tree of depth `branch.size()` with root
+  /// `root`, built with single or double SHA-256. This is the check of
+  /// `Bitcoin.verifyBranch` and `ZeroPadded.verifyBranch`. The index must lie
+  /// within that depth, and the depth is at most 61. A malformed branch
+  /// gives `false`. Allocates one hasher.
+  public func verifyBranch(leaf : Blob, index : Nat, branch : [Blob], root : Blob, double : Bool) : Bool {
+    // 61 levels: every index below 2^61 is then within reach of the bound
+    // on the index below.
+    if (leaf.size() != 32 or branch.size() > 61) return false;
+    var j = 0;
+    while (j < branch.size()) {
+      if (branch[j].size() != 32) return false;
+      j += 1;
+    };
+    if (index > 2305843009213693951) return false; // 2^61 - 1: the largest bound that compares without allocating
+    let position = index.toNat64();
+    if ((position >> branch.size().toNat64()) != 0) return false;
+    let node = Hasher.new();
+    node.loadBlob32(leaf);
+    foldBranch(node, position, branch, double);
+    node.equalsBlob32(root);
+  };
+
   // ---------------------------------------------------------------------------
   // Saving and restoring
   // ---------------------------------------------------------------------------
 
-  /// Copy the count and the peaks of `from` into `to`, which must have at
-  /// least as many slots. Used to undo: copy aside, try, copy back.
-  public func copy(from : Peaks, to : Peaks) {
-    assert to.hasher.size() >= from.hasher.size();
+  /// Whether two trees have the same rules: the same hashing and the same
+  /// fill (for zero padding, the same depth and the same table).
+  public func sameRules(a : Tree, b : Tree) : Bool {
+    if (a.double != b.double) return false;
+    switch (a.fill, b.fill) {
+      case (#skip, #skip) true;
+      case (#copy, #copy) true;
+      case (#zeros(x), #zeros(y)) x.depth == y.depth and x.table == y.table;
+      case _ false;
+    };
+  };
+
+  /// Copy the count and the peaks of `from` into `to`: a snapshot, to go
+  /// back to later. Traps unless `to` has the same rules (`sameRules`) and
+  /// at least as many slots.
+  public func copy(from : Tree, to : Tree) {
+    assert sameRules(from, to) and to.hasher.size() >= from.hasher.size();
     var bits = from.count;
     while (bits != 0) {
       let k = Nat64.bitcountTrailingZero(bits).toNat();
@@ -372,7 +448,7 @@ module {
 
   /// The peaks as Blobs, lowest first. Together with the count they are the
   /// whole state of the tree.
-  public func toBlobs(self : Peaks) : [Blob] {
+  public func toBlobs(self : Tree) : [Blob] {
     var bits = self.count;
     Array.tabulate<Blob>(
       Nat64.bitcountNonZero(bits).toNat(),
@@ -388,7 +464,7 @@ module {
   /// `toBlobs` returns them. Returns `false`, and leaves the tree as it was,
   /// if the count is beyond the capacity, or if the peaks are not one 32-byte
   /// `Blob` per 1-bit of the count.
-  public func load(self : Peaks, count : Nat64, peaks : [Blob]) : Bool {
+  public func load(self : Tree, count : Nat64, peaks : [Blob]) : Bool {
     if (count > capacity(self) or Nat64.bitcountNonZero(count).toNat() != peaks.size()) return false;
     var i = 0;
     while (i < peaks.size()) {

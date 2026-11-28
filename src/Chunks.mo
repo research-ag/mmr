@@ -7,7 +7,7 @@
 /// The verifier keeps the tree over the leaves accepted so far (`Peaks`). A
 /// chunk brings the next leaves and a PROOF for the leaves still to come: the
 /// peaks to the right of the chunk's last leaf, lowest first
-/// (`Prove.rightPeaks`). The verifier then
+/// (`MerkleTree.rightPeaks`). The verifier then
 ///
 ///   1. adds the leaves of the chunk to its tree,
 ///   2. closes the tree with the proof (`Peaks.close`),
@@ -27,9 +27,10 @@
 /// canister that traps on a rejected chunk gets the same by the trap rolling
 /// the call back; one that does not must drop the verifier.
 ///
-/// `onTree` also lets the caller own the hashers: one tree, allocated once,
-/// can serve one verifier after another. The presets have a `verifierOn`
-/// function that fills in their rules.
+/// A verifier works on a tree (`onTree`), which takes its rules from the
+/// tree. The presets' `verifier` makes a tree for it, and their `verifierOn`
+/// takes one of the caller's: one tree, allocated once, can serve one
+/// verifier after another.
 ///
 /// === Cost ===
 ///
@@ -56,9 +57,7 @@ module {
     /// The root the leaves must hash to.
     root : Blob;
     /// The tree over the leaves accepted so far; `tree.count` is their number.
-    tree : Peaks.Peaks;
-    /// The tree's rule for a node without a right sibling.
-    fill : Peaks.Fill;
+    tree : Peaks.Tree;
     /// Whether equal siblings are rejected (see `Bitcoin`).
     checked : Bool;
     /// Whether a chunk has been accepted with an empty proof.
@@ -68,29 +67,28 @@ module {
     var failed : Bool;
   };
 
-  /// A verifier for the tree with root `root` (32 bytes) and at most
-  /// 2^maxDepth leaves, built with single or double SHA-256 and the given
-  /// `fill`. With `checked`, a chunk that would combine two equal siblings is
-  /// rejected. The presets have a `verifier` function that fills these in.
+  /// A verifier for the tree with root `root` (32 bytes), on `tree`. The tree
+  /// is emptied (its count set to 0; what its hashers hold does not matter),
+  /// and its rules, `double` and `fill`, are the verifier's. With `checked`,
+  /// a chunk that would combine two equal siblings is rejected.
   ///
-  /// The verifier allocates its tree. A rejected chunk makes it `failed`.
-  public func new(root : Blob, maxDepth : Nat, double : Bool, fill : Peaks.Fill, checked : Bool) : Verifier {
-    assert maxDepth <= 61;
-    onTree(root, Peaks.withDepth(maxDepth, double), fill, checked);
-  };
-
-  /// A verifier on a tree that the caller owns. The tree is emptied (its
-  /// count set to 0; what its hashers hold does not matter), and its
-  /// `double` is the verifier's. A tree made by `Peaks.withDepth(d, ...)`
-  /// verifies up to 2^d leaves. Only one verifier may use a tree at a time,
-  /// and the caller must not touch it meanwhile.
-  public func onTree(root : Blob, tree : Peaks.Peaks, fill : Peaks.Fill, checked : Bool) : Verifier {
+  /// A tree of d + 2 hashers verifies up to 2^d leaves, with proofs of up to
+  /// d peaks, and a zero-padded one no more than its places. That is 2^d for
+  /// a tree made by `withDepth(d, ...)`, but for one made by
+  /// `Peaks.new(maxLeaves, ...)` only the largest power of two up to
+  /// `maxLeaves`, which is less than `maxLeaves` unless that is a power of
+  /// two: make the tree with `withDepth` for a verifier. Only one verifier
+  /// may use a tree at a time, and the caller must not touch it meanwhile.
+  ///
+  /// The presets have a `verifier` function that makes a tree with their
+  /// rules for it, and a `verifierOn` function for a tree of the caller's.
+  /// A rejected chunk makes the verifier `failed`.
+  public func onTree(root : Blob, tree : Peaks.Tree, checked : Bool) : Verifier {
     assert root.size() == 32;
     tree.count := 0;
     {
       root;
       tree;
-      fill;
       checked;
       var done = false;
       var failed = false;
@@ -129,10 +127,15 @@ module {
   public func verifyChunk(self : Verifier, leaves : [Blob], next : [Blob]) : Bool {
     if (self.done or self.failed) return false;
     let tree = self.tree;
-    // A tree of 2^maxDepth leaves is the most there is room for, and its
-    // proofs have at most one peak per level. A longer proof is not walked.
+    // The verifier takes trees of up to 2^maxDepth leaves (see `onTree`),
+    // whose proofs have at most one peak per level. A longer proof is not
+    // walked.
     let maxDepth = tree.hasher.size() - 2 : Nat;
-    let maxLeaves = (tree.capacity() + 1) / 2;
+    // At most 2^maxDepth leaves, and no more than the tree holds with a root
+    // (fewer for a zero-padded tree of a smaller depth).
+    let atDepth : Nat64 = 1 << maxDepth.toNat64();
+    let capacity = tree.capacity();
+    let maxLeaves = if (capacity < atDepth) capacity else atDepth;
     if (
       leaves.size() == 0 or next.size() > maxDepth or not wellFormed(leaves) or not wellFormed(next) or leaves.size().toNat64() > maxLeaves - tree.count
     ) {
@@ -142,7 +145,7 @@ module {
     // 1. Add the chunk, in pairs. 2. and 3. Close the tree with the proof
     // and compare with the root.
     if (
-      tree.addAll(leaves, 0, leaves.size(), self.checked) and tree.close(next, self.fill, self.checked) and tree.spare().equalsBlob32(self.root)
+      tree.addAll(leaves, 0, leaves.size(), self.checked) and tree.close(next, self.checked) and tree.spare().equalsBlob32(self.root)
     ) {
       // 4. Keep the grown tree.
       self.done := next.size() == 0;

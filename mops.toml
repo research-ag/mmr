@@ -1,8 +1,8 @@
 [package]
-name = "mmr"
+name = "merkle"
 version = "0.1.0"
-description = "Allocation-free Merkle mountain ranges over SHA-256: Bitcoin, bagged and zero-padded trees, proofs and chunked verification"
-repository = "https://github.com/research-ag/mmr"
+description = "Allocation-free SHA-256 Merkle trees for Motoko: Bitcoin, bagged and zero-padded roots, proofs and chunked verification, built as Merkle mountain ranges"
+repository = "https://github.com/research-ag/merkle"
 keywords = [ "merkle", "mmr", "sha256", "bitcoin", "ssz" ]
 license = "Apache-2.0"
 files = [ "src/**/*.mo" ]

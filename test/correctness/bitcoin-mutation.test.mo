@@ -7,7 +7,7 @@
 import Peaks "../../src/Peaks";
 import Bitcoin "../../src/Bitcoin";
 import Chunks "../../src/Chunks";
-import Prove "../../src/Prove";
+import MerkleTree "../../src/MerkleTree";
 import Nat "mo:core/Nat";
 import Array "mo:core/Array";
 import Fixtures "../support/Fixtures";
@@ -16,7 +16,7 @@ import Reference "../support/Reference";
 let { leaves; slice } = Fixtures;
 
 // A caller's tree for the verifiers below.
-let bare = Peaks.withDepth(10, true);
+let bare = Peaks.withDepth(10, true, #copy);
 
 // Mutated lists.
 //
@@ -46,13 +46,13 @@ for (n in ([2, 3, 5, 6, 7, 11, 12, 13, 16, 100] : [Nat]).values()) {
       // The chunk verifier rejects it, in one chunk and split anywhere. An
       // odd cut makes the second chunk start with a single leaf. Both on
       // its own tree and on the caller's.
-      let levels = Bitcoin.levels(mutated);
+      let full = Bitcoin.merkleTree(mutated);
       for (cut in Nat.range(1, mutated.size() + 1)) {
-        for (v in [Bitcoin.verifier(root, 10), Chunks.onTree(root, bare, #copy, true)].values()) {
+        for (v in [Bitcoin.verifier(root, 10), Chunks.onTree(root, bare, true)].values()) {
           if (cut == mutated.size()) {
             assert not v.verifyChunk(mutated, []);
           } else {
-            assert not (v.verifyChunk(slice(mutated, 0, cut), Prove.rightPeaks(levels, cut)) and v.verifyChunk(slice(mutated, cut, mutated.size()), []));
+            assert not (v.verifyChunk(slice(mutated, 0, cut), full.rightPeaks(cut)) and v.verifyChunk(slice(mutated, cut, mutated.size()), []));
           };
         };
       };
@@ -71,7 +71,7 @@ do {
   // chunk and is failed by it.
   func rejects(list : [Blob], chunk : [Blob], proof : [Blob]) : Bool {
     let v = Bitcoin.verifier(Reference.bitcoin(list), 10);
-    let w = Chunks.onTree(Reference.bitcoin(list), bare, #copy, true);
+    let w = Chunks.onTree(Reference.bitcoin(list), bare, true);
     not v.verifyChunk(chunk, proof) and v.broken() and not w.verifyChunk(chunk, proof) and w.broken();
   };
 
@@ -98,9 +98,9 @@ do {
 
   // Pairs: the checked form refuses two equal leaves, and the same pair
   // twice, which would be two equal nodes one level up.
-  let p = Peaks.new(8, true);
+  let p = Peaks.new(8, true, #copy);
   assert not p.addPairChecked(a, a) and p.count == 0;
   assert p.addPairChecked(a, b) and p.count == 2;
   assert not p.addPairChecked(a, b) and p.count == 2;
-  assert p.addPairChecked(c, d) and p.root(#copy) == Reference.bitcoin([a, b, c, d]);
+  assert p.addPairChecked(c, d) and p.root() == Reference.bitcoin([a, b, c, d]);
 };

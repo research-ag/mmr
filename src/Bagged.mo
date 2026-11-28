@@ -18,38 +18,23 @@
 /// reason.
 
 import Hasher "mo:sha2/Hasher/Sha256";
-import Sha256 "mo:sha2/Sha256";
 import Nat "mo:core/Nat";
 import Chunks "Chunks";
 import Peaks "Peaks";
-import Prove "Prove";
+import MerkleTree "MerkleTree";
 
 module {
-  /// A bagged tree: `Peaks` with single SHA-256. The `kind` field only keeps
-  /// the trees of different presets apart for the type checker; the core
-  /// functions are reached through `peaks`. A static record that can be
-  /// declared `stable`; its shape is part of the package's interface.
-  public type Tree = { peaks : Peaks.Peaks; kind : { #bagged } };
+  /// An empty bagged tree with room for at least `maxLeaves` leaves: `Peaks`
+  /// with single SHA-256 and the `#skip` fill. Leaves are added, and the
+  /// root taken, with the functions of `Peaks` (`add`, `addMessage`, `root`).
+  public func new(maxLeaves : Nat) : Peaks.Tree = Peaks.new(maxLeaves, false, #skip);
 
-  /// An empty tree with room for at least `maxLeaves` leaves.
-  public func new(maxLeaves : Nat) : Tree = {
-    peaks = Peaks.new(maxLeaves, false);
-    kind = #bagged;
-  };
+  /// An empty bagged tree with room for 2^depth leaves (depth at most 61).
+  public func withDepth(depth : Nat) : Peaks.Tree = Peaks.withDepth(depth, false, #skip);
 
-  /// Add a leaf (32 bytes).
-  public func add(self : Tree, leaf : Blob) = self.peaks.add(leaf);
-
-  /// Add the SHA-256 of a message of any length as a leaf, through `digest`
-  /// (see `Peaks.addMessage`).
-  public func addMessage(self : Tree, digest : Sha256.Digest, message : Blob) = self.peaks.addMessage(digest, message);
-
-  /// The number of leaves added so far.
-  public func count(self : Tree) : Nat64 = self.peaks.count;
-
-  /// The root of the leaves added so far (at least one). The tree is left
-  /// unchanged.
-  public func root(self : Tree) : Blob = self.peaks.root(#skip);
+  /// Whether `tree` has the bagged rules: single SHA-256 and the `#skip`
+  /// fill.
+  public func isBagged(tree : Peaks.Tree) : Bool = not tree.double and tree.fill == #skip;
 
   /// The root of a complete list of leaves (at least one), in one shot.
   public func merkleRoot(leaves : [Blob]) : Blob {
@@ -60,17 +45,17 @@ module {
       assert leaves[0].size() == 32;
       return leaves[0];
     };
-    let peaks = Peaks.new(n, false);
-    ignore peaks.addAll(leaves, 0, n, false);
-    peaks.root(#skip);
+    let tree = new(n);
+    ignore tree.addAll(leaves, 0, n, false);
+    tree.root();
   };
 
   /// Verify an INCLUSION PROOF: that `leaf` is the leaf at position `index`
   /// of the tree of `size` leaves with root `root`. `path` holds the siblings
   /// of the leaf's ancestors, lowest first, with the levels left out at which
-  /// a node has no sibling (`Prove.branch` with `#skip`). The algorithm is
-  /// that of RFC 9162, section 2.1.3.2, without the prefix bytes. A malformed
-  /// proof gives `false`.
+  /// a node has no sibling (`MerkleTree.branch` of a bagged tree). The
+  /// algorithm is that of RFC 9162, section 2.1.3.2, without the prefix
+  /// bytes. `size` is at most 2^61 - 1. A malformed proof gives `false`.
   public func verifyInclusion(leaf : Blob, index : Nat, size : Nat, path : [Blob], root : Blob) : Bool {
     // 2^61 - 1 is the largest bound that compares without allocating.
     if (leaf.size() != 32 or index >= size or size > 2305843009213693951) return false;
@@ -102,19 +87,20 @@ module {
   /// A chunk verifier for the tree with root `root` and at most 2^maxDepth
   /// leaves. The last chunk is recognised by its empty proof. See `Chunks`,
   /// and the note above: the root does not say how many leaves there are.
-  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.new(root, maxDepth, false, #skip, false);
+  public func verifier(root : Blob, maxDepth : Nat) : Chunks.Verifier = Chunks.onTree(root, withDepth(maxDepth), false);
 
-  /// The same verifier on a tree that the caller owns: the
-  /// tree is emptied, nothing is allocated but the verifier's record, and a
-  /// rejected chunk fails the verifier (see `Chunks.onTree`). A tree made by
-  /// `Peaks.withDepth(d, false)` verifies up to 2^d leaves. Traps if the tree
-  /// uses double SHA-256.
-  public func verifierOn(root : Blob, tree : Peaks.Peaks) : Chunks.Verifier {
-    assert not tree.double;
-    Chunks.onTree(root, tree, #skip, false);
+  /// The same verifier on a tree that the caller owns: the tree is emptied,
+  /// nothing is allocated but the verifier's record, and a rejected chunk
+  /// fails the verifier (see `Chunks.onTree`). A tree made by `withDepth(d)`
+  /// verifies up to 2^d leaves; make it with `withDepth`, as one made by
+  /// `new` takes fewer than its capacity. Traps if the tree does not have
+  /// the bagged rules (`isBagged`).
+  public func verifierOn(root : Blob, tree : Peaks.Tree) : Chunks.Verifier {
+    assert isBagged(tree);
+    Chunks.onTree(root, tree, false);
   };
 
-  /// The levels of the tree over `leaves`, for `Prove.rightPeaks` (the proofs
-  /// of the chunk verifier) and `Prove.branch` (inclusion proofs).
-  public func levels(leaves : [Blob]) : [[Blob]] = Prove.levels(leaves, #skip, false);
+  /// The whole tree over `leaves`, for `MerkleTree.rightPeaks` (the proofs of
+  /// the chunk verifier) and `MerkleTree.branch` (inclusion proofs).
+  public func merkleTree(leaves : [Blob]) : MerkleTree.MerkleTree = MerkleTree.build(leaves, #skip, false);
 };

@@ -6,8 +6,8 @@ import Bitcoin "../src/Bitcoin";
 import Bagged "../src/Bagged";
 import Chunks "../src/Chunks";
 import Peaks "../src/Peaks";
-import Prove "../src/Prove";
-import Ssz "../src/Ssz";
+import MerkleTree "../src/MerkleTree";
+import ZeroPadded "../src/ZeroPadded";
 
 module {
   // The cost of a Merkle root over n random 32-byte leaves, for the three
@@ -49,38 +49,38 @@ module {
       proofs : [[Blob]];
       verifier : Chunks.Verifier;
     };
-    func plan(ls : [Blob], levels : [[Blob]], verifier : Chunks.Verifier) : Plan {
+    func plan(ls : [Blob], full : MerkleTree.MerkleTree, verifier : Chunks.Verifier) : Plan {
       let n = ls.size();
       let bounds : [Nat] = [0, n / 3, 2 * n / 3, n];
       {
         chunks = Array.tabulate<[Blob]>(3, func(c) = Array.tabulate<Blob>(bounds[c + 1] - bounds[c], func(j) = ls[bounds[c] + j]));
-        proofs = Array.tabulate<[Blob]>(3, func(c) = Prove.rightPeaks(levels, bounds[c + 1]));
+        proofs = Array.tabulate<[Blob]>(3, func(c) = full.rightPeaks(bounds[c + 1]));
         verifier;
       };
     };
     let bitcoinPlans = leaves.map<[Blob], Plan>(
       func(ls) {
-        let levels = Bitcoin.levels(ls);
-        plan(ls, levels, Bitcoin.verifier(Prove.root(levels), 13));
+        let full = Bitcoin.merkleTree(ls);
+        plan(ls, full, Bitcoin.verifier(full.root(), 13));
       }
     );
     let baggedPlans = leaves.map<[Blob], Plan>(
       func(ls) {
-        let levels = Bagged.levels(ls);
-        plan(ls, levels, Bagged.verifier(Prove.root(levels), 13));
+        let full = Bagged.merkleTree(ls);
+        plan(ls, full, Bagged.verifier(full.root(), 13));
       }
     );
 
     // A tree of its own for every cell that builds one.
-    let bitcoinTrees = Array.tabulate<[Bitcoin.Tree]>(2, func(_) = counts.map<Nat, Bitcoin.Tree>(Bitcoin.new));
-    let baggedTrees = counts.map<Nat, Bagged.Tree>(Bagged.new);
-    let paddedTrees = counts.map<Nat, Ssz.Tree>(func(_) = Ssz.new(20));
+    let bitcoinTrees = Array.tabulate<[Peaks.Tree]>(2, func(_) = counts.map<Nat, Peaks.Tree>(Bitcoin.new));
+    let baggedTrees = counts.map<Nat, Peaks.Tree>(Bagged.new);
+    let paddedTrees = counts.map<Nat, Peaks.Tree>(func(_) = ZeroPadded.new(20));
 
     // Every way gives the same root.
     for (ls in leaves.values()) {
-      let t = Peaks.new(ls.size(), true);
+      let t = Peaks.new(ls.size(), true, #copy);
       for (l in ls.values()) t.add(l);
-      assert t.root(#copy) == Bitcoin.merkleRoot(ls);
+      assert t.root() == Bitcoin.merkleRoot(ls);
     };
 
     Bench.V1(
